@@ -1,0 +1,25 @@
+[project]
+name = "pminspect"
+version = "0.1.0"
+description = "Redis publisher for real-time Polymarket trades"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp",
+    "eth-abi",
+    "jsonschema",
+    "python-dotenv",
+    "redis",
+    "typer",
+    "websockets",
+]
+
+[project.scripts]
+pminspect = "src.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

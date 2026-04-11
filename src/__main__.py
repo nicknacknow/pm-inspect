@@ -1,0 +1,6 @@
+"""Entry point for pminspect CLI."""
+
+from src.cli import app
+
+if __name__ == "__main__":
+    app()
