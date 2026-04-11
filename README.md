@@ -12,10 +12,11 @@
 ## Setup
 
 ```bash
-uv venv --python 3.12
+python -m venv .venv
 source .venv/bin/activate
 git submodule update --init --recursive
-uv pip install -e .
+python -m pip install -U pip
+python -m pip install -e .
 ```
 
 The schema submodule must be initialized before running or building `pminspect`.
@@ -137,3 +138,4 @@ Recommended first tests:
 
 1. Add monitor callback wiring tests (mock publisher + monitor stream).
 2. Add publisher transport behavior tests (mock Redis publish failure/success).
+3. Add Docker implementation for publisher runtime.
