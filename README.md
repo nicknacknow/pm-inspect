@@ -67,6 +67,27 @@ Options:
 |---|---|---|
 | `--redis-url TEXT` |  | Redis URL |
 
+Examples:
+
+```bash
+# publish all Polymarket trades
+pminspect listen
+```
+
+The channel is fixed in code at `src/pubsub/topics.py` (`TRADE_TOPIC`).
+
+## Updating schema submodule
+
+`pminspect` uses a pinned schema-platform commit. It does **not** auto-update.
+
+To bump to the latest schema-platform `main`:
+
+```bash
+git submodule update --remote external/pm-event-schema-platform
+git add external/pm-event-schema-platform
+git commit -m "Bump schema submodule"
+```
+
 ## Template listener usage
 
 The template listener is intentionally standalone: hardcoded config, local formatting logic, and no imports from this service package.
