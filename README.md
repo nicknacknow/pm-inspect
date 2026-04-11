@@ -31,10 +31,32 @@ POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
 
+## Run Redis
+
+`pminspect` expects Redis to be available before startup.
+
+### Option 1: Docker (recommended)
+
+```bash
+docker run --name pminspect-redis -p 6379:6379 -d redis:7-alpine
+docker exec -it pminspect-redis redis-cli ping
+# PONG
+```
+
+### Option 2: Ubuntu/WSL
+
+```bash
+sudo apt update
+sudo apt install -y redis-server
+redis-server --daemonize yes
+redis-cli ping
+# PONG
+```
+
 ## Publisher usage
 
 ```bash
-pminspect listen [OPTIONS]
+pminspect [OPTIONS]
 ```
 
 Options:
@@ -42,15 +64,6 @@ Options:
 | Option | Short | Description |
 |---|---|---|
 | `--redis-url TEXT` |  | Redis URL |
-
-Examples:
-
-```bash
-# publish all Polymarket trades
-pminspect listen
-```
-
-The channel is fixed in code at `src/pubsub/topics.py` (`TRADE_TOPIC`).
 
 ## Template listener usage
 
@@ -101,4 +114,3 @@ Recommended first tests:
 
 1. Add monitor callback wiring tests (mock publisher + monitor stream).
 2. Add publisher transport behavior tests (mock Redis publish failure/success).
-
