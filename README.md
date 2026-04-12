@@ -1,24 +1,24 @@
 # pminspect
 
-`pminspect` is a focused publisher service: it listens to Polygon blocks for Polymarket trades and publishes each trade as a Redis Pub/Sub event.
+`pminspect` is a focused publisher service: it listens to Polygon blocks for Polymarket trades and publishes each trade
+as a Redis Pub/Sub event.
 
 ## What this repo contains
 
 - Publisher CLI (`pminspect listen`)
-- Trade event schema helpers
+- Trade event schema (bundled)
 - `src/pubsub/` module for topic constants, local schema loading, and publish-time payload validation
 - A standalone `src/template_listener.py` you can copy into a separate listener repo (no `src.*` imports)
 
 ## Setup
 
 ```bash
-uv venv --python 3.12
-source .venv/bin/activate
-git submodule update --init --recursive
-uv pip install -e .
+python3 -m venv .venv
+source .venv/bin/activate  # on Windows: .venv\Scripts\activate
+pip install -e .
 ```
 
-The schema submodule must be initialized before running or building `pminspect`.
+Requires Python 3.12+.
 
 ## Configuration
 
@@ -58,7 +58,7 @@ redis-cli ping
 ## Publisher usage
 
 ```bash
-pminspect [OPTIONS]
+pminspect listen [OPTIONS]
 ```
 
 Options:
@@ -79,9 +79,9 @@ Edit `REDIS_URL`, `CHANNEL`, and `MIN_USDC` at the top of the file.
 
 ## Event shape
 
-`pminspect` validates events against schema-platform submodule contract at:
+`pminspect` validates events against the bundled schema at:
 
-`external/pm-event-schema-platform/schemas/polymarket/trade/v1.0.0/schema.json`
+`src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json`
 
 Each published message is JSON:
 
