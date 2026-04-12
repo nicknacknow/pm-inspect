@@ -1,27 +1,18 @@
-"""Load pub/sub schemas from schema-platform submodule."""
+"""Load pub/sub schemas from bundled schema directory."""
 
 import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-_SCHEMA_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "external"
-    / "pm-event-schema-platform"
-    / "schemas"
-)
+_SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 
 
 @lru_cache(maxsize=32)
 def load_schema(relative_path: str) -> dict[str, Any]:
-    """Load a schema file from external schema-platform submodule."""
+    """Load a schema file from bundled schemas directory."""
     schema_path = _SCHEMA_DIR / relative_path
     if not schema_path.exists():
-        raise FileNotFoundError(
-            f"schema not found at {schema_path}. "
-            "Run: git submodule update --init --recursive"
-        )
+        raise FileNotFoundError(f"schema not found at {schema_path}")
     with schema_path.open(encoding="utf-8") as f:
         return json.load(f)
-
