@@ -19,9 +19,9 @@ class PolygonClient:
     RECONNECT_DELAY_SECONDS = 5
     RPC_RETRY_DELAY_SECONDS = 1
 
-    def __init__(self, wss_url: str = POLYGON_WSS_URL) -> None:
-        self.wss_url = wss_url
-        self.http_url = wss_url.replace("wss://", "https://").rstrip("/")
+    def __init__(self, wss_url: str | None = None) -> None:
+        self.wss_url = wss_url or POLYGON_WSS_URL or ""
+        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
@@ -33,6 +33,9 @@ class PolygonClient:
 
     async def connect(self) -> None:
         """Establish WebSocket connection."""
+        if not self.wss_url:
+            raise ValueError("POLYGON_WSS_URL is not configured")
+
         log.info("Connecting to WebSocket", url=self.wss_url[:50] + "...")
         try:
             # Create SSL context for compatibility
