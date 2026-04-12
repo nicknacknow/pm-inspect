@@ -14,12 +14,12 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-git submodule update --init --recursive
 python -m pip install -U pip
 python -m pip install -e .
 ```
 
-The schema submodule must be initialized before running or building `pminspect`.
+Runtime schema loading uses packaged resources under `src/pubsub/schemas/`.
+Initialize the schema submodule only when you want to refresh the packaged copy.
 
 ## Configuration
 
@@ -85,7 +85,9 @@ To bump to the latest schema-platform `main`:
 
 ```bash
 git submodule update --remote external/pm-event-schema-platform
+cp external/pm-event-schema-platform/schemas/polymarket/trade/v1.0.0/schema.json src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json
 git add external/pm-event-schema-platform
+git add src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json
 git commit -m "Bump schema submodule"
 ```
 
@@ -101,9 +103,9 @@ Edit `REDIS_URL`, `CHANNEL`, and `MIN_USDC` at the top of the file.
 
 ## Event shape
 
-`pminspect` validates events against schema-platform submodule contract at:
+`pminspect` validates events against the packaged contract at:
 
-`external/pm-event-schema-platform/schemas/polymarket/trade/v1.0.0/schema.json`
+`src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json`
 
 Each published message is JSON:
 

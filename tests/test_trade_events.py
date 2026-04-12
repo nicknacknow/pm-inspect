@@ -2,6 +2,7 @@ import unittest
 
 from src.core.models import TradeData
 from src.events.trade_events import deserialize_trade_event, serialize_trade_event
+from src.pubsub.schema_loader import load_schema
 
 
 class TradeEventTests(unittest.TestCase):
@@ -33,6 +34,11 @@ class TradeEventTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             deserialize_trade_event(invalid_payload)
 
+    def test_packaged_trade_schema_loads(self) -> None:
+        schema = load_schema("polymarket/trade/v1.0.0/schema.json")
+
+        self.assertEqual(schema["title"], "polymarket.trade.v1.0.0")
+        self.assertEqual(schema["properties"]["event_type"]["const"], "trade")
 
 if __name__ == "__main__":
     unittest.main()
