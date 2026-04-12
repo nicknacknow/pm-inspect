@@ -14,8 +14,11 @@
 ```bash
 uv venv --python 3.12
 source .venv/bin/activate
+git submodule update --init --recursive
 uv pip install -e .
 ```
+
+The schema submodule must be initialized before running or building `pminspect`.
 
 ## Configuration
 
@@ -30,10 +33,32 @@ POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
 
+## Run Redis
+
+`pminspect` expects Redis to be available before startup.
+
+### Option 1: Docker (recommended)
+
+```bash
+docker run --name pminspect-redis -p 6379:6379 -d redis:7-alpine
+docker exec -it pminspect-redis redis-cli ping
+# PONG
+```
+
+### Option 2: Ubuntu/WSL
+
+```bash
+sudo apt update
+sudo apt install -y redis-server
+redis-server --daemonize yes
+redis-cli ping
+# PONG
+```
+
 ## Publisher usage
 
 ```bash
-pminspect listen [OPTIONS]
+pminspect [OPTIONS]
 ```
 
 Options:
@@ -41,15 +66,6 @@ Options:
 | Option | Short | Description |
 |---|---|---|
 | `--redis-url TEXT` |  | Redis URL |
-
-Examples:
-
-```bash
-# publish all Polymarket trades
-pminspect listen
-```
-
-The channel is fixed in code at `src/pubsub/topics.py` (`TRADE_TOPIC`).
 
 ## Template listener usage
 
@@ -63,9 +79,9 @@ Edit `REDIS_URL`, `CHANNEL`, and `MIN_USDC` at the top of the file.
 
 ## Event shape
 
-`pminspect` validates events against the local vendored schema at:
+`pminspect` validates events against schema-platform submodule contract at:
 
-`src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json`
+`external/pm-event-schema-platform/schemas/polymarket/trade/v1.0.0/schema.json`
 
 Each published message is JSON:
 
@@ -98,6 +114,5 @@ Recommended first tests:
 
 ## TODO
 
-1. Replace vendored local schema with automated sync from `pm-event-schema-platform`.
-2. Add a CI check that verifies local schema matches the canonical schema version.
-
+1. Add monitor callback wiring tests (mock publisher + monitor stream).
+2. Add publisher transport behavior tests (mock Redis publish failure/success).
