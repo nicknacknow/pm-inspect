@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Optional
 import aiohttp
 import websockets
 
-from src.constants import POLYGON_WSS_URL
+from src.constants import get_polygon_wss_url
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -19,9 +19,9 @@ class PolygonClient:
     RECONNECT_DELAY_SECONDS = 5
     RPC_RETRY_DELAY_SECONDS = 1
 
-    def __init__(self, wss_url: str = POLYGON_WSS_URL) -> None:
-        self.wss_url = wss_url
-        self.http_url = wss_url.replace("wss://", "https://").rstrip("/")
+    def __init__(self, wss_url: Optional[str] = None) -> None:
+        self.wss_url = wss_url or get_polygon_wss_url()
+        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
