@@ -18,6 +18,8 @@ git submodule update --init --recursive
 uv pip install -e .
 ```
 
+The schema submodule must be initialized before running or building `pminspect`.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and set values:
