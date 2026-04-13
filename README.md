@@ -38,8 +38,7 @@ REDIS_URL=redis://localhost:6379/0
 Use Docker Compose to run both services together:
 
 ```bash
-cp .env.example .env
-# set POLYGON_WSS_URL in .env
+# after completing the Configuration section
 docker compose up --build
 ```
 
