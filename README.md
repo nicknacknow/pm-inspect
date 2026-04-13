@@ -69,13 +69,11 @@ redis-cli ping
 # PONG
 ```
 
-## Listener entrypoint
+## Publisher usage
 
 ```bash
 pminspect listen [OPTIONS]
 ```
-
-`pminspect listen` is the intended entrypoint for the publisher.
 
 The listener handles `SIGINT`/`SIGTERM` and shuts down Redis/WebSocket connections cleanly.
 
