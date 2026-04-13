@@ -3,6 +3,7 @@
 import asyncio
 
 import typer
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from src.constants import REDIS_URL
 from src.core.models import TradeData
@@ -28,7 +29,16 @@ def listen(
 ) -> None:
     """Listen to all Polymarket trades and publish events to Redis."""
     log.info("Tracking ALL Polymarket trades")
-    asyncio.run(_listen(redis_url=redis_url))
+    try:
+        asyncio.run(_listen(redis_url=redis_url))
+    except RedisConnectionError as exc:
+        log.error("Redis connection failed", redis_url=redis_url, error=str(exc))
+        typer.echo(
+            "ERROR: Could not connect to Redis. "
+            "Start Redis and/or set --redis-url to a reachable instance.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
 
 
 async def _listen(redis_url: str) -> None:

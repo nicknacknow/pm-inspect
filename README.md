@@ -33,11 +33,25 @@ POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
 
-## Run Redis
+## Run with Docker Compose (publisher + Redis)
+
+Use Docker Compose to run both services together:
+
+```bash
+# after completing the Configuration section
+docker compose up --build
+```
+
+Notes:
+
+- `docker-compose.yml` sets `REDIS_URL=redis://redis:6379/0` for the publisher container.
+- Redis is exposed on `localhost:6379` for local subscribers/listeners.
+
+## Run Redis only
 
 `pminspect` expects Redis to be available before startup.
 
-### Option 1: Docker (recommended)
+### Option 1: Docker
 
 ```bash
 docker run --name pminspect-redis -p 6379:6379 -d redis:7-alpine
