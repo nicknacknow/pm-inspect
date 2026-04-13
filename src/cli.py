@@ -5,6 +5,7 @@ import contextlib
 import signal
 
 import typer
+from typer import Context
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from src.constants import POLYGON_WSS_URL, REDIS_URL
@@ -20,6 +21,21 @@ app = typer.Typer(
 )
 
 log = get_logger(__name__)
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: Context,
+    redis_url: str = typer.Option(
+        REDIS_URL,
+        "--redis-url",
+        help="Redis URL for trade event publishing",
+    ),
+) -> None:
+    """Run the publisher by default when no subcommand is provided."""
+    if ctx.invoked_subcommand is None:
+        listen(redis_url=redis_url)
+
 
 @app.command()
 def listen(
