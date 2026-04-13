@@ -16,7 +16,7 @@ class CliRuntimeTests(unittest.TestCase):
             "connect",
             new=AsyncMock(side_effect=RedisConnectionError("refused")),
         ):
-            result = CliRunner().invoke(cli.app, [])
+            result = CliRunner().invoke(cli.app, ["listen"])
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Could not connect to Redis", result.output)
