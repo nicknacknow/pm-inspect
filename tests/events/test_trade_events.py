@@ -1,3 +1,5 @@
+"""Trade event serialization/deserialization tests."""
+
 import unittest
 
 from src.core.models import TradeData
@@ -36,4 +38,3 @@ class TradeEventTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
