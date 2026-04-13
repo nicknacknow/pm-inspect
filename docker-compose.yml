@@ -1,7 +1,6 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: pminspect-redis
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:
@@ -14,7 +13,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: pminspect
     env_file:
       - .env
     environment:
