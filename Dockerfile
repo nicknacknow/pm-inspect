@@ -9,5 +9,8 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 
 RUN pip install --no-cache-dir .
+RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
+
+USER app
 
 CMD ["pminspect", "listen"]
