@@ -13,4 +13,4 @@ RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:
 
 USER app
 
-CMD ["pminspect", "listen"]
+CMD ["pminspect"]
