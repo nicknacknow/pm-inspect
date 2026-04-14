@@ -71,7 +71,7 @@ def _run_command(
             err=True,
         )
         raise typer.Exit(code=1) from exc
-    except (OSError, ValueError, WebSocketException) as exc:
+    except (OSError, TimeoutError, ValueError, WebSocketException) as exc:
         log.error(failure_label, error=str(exc))
         typer.echo(f"ERROR: {exc}", err=True)
         raise typer.Exit(code=1) from exc
