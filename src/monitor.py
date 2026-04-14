@@ -43,25 +43,29 @@ class TradeMonitor:
         self._running = True
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
-
-        await self.client.connect()
-
-        wallet_filter = WalletFilter(target_wallets)
-        processor = BlockProcessor(self.client, self.decoder, wallet_filter)
-
-        if wallet_filter.is_tracking_all:
-            log.info("Tracking ALL Polymarket trades")
-        else:
-            log.info("Tracking specific wallets", count=wallet_count)
-
         try:
-            await self.client.subscribe_blocks(
-                lambda block_num: self._on_block(block_num, processor)
-            )
-        except Exception as e:
-            log.error("Monitor error", error=str(e))
-            self.emit("error", e)
-            self.emit("close", {"code": -1, "reason": str(e)})
+            await self.client.connect()
+
+            wallet_filter = WalletFilter(target_wallets)
+            processor = BlockProcessor(self.client, self.decoder, wallet_filter)
+
+            if wallet_filter.is_tracking_all:
+                log.info("Tracking ALL Polymarket trades")
+            else:
+                log.info("Tracking specific wallets", count=wallet_count)
+
+            try:
+                await self.client.subscribe_blocks(
+                    lambda block_num: self._on_block(block_num, processor)
+                )
+            except Exception as e:
+                if self._running:
+                    log.error("Monitor error", error=str(e))
+                    self.emit("error", e)
+                    self.emit("close", {"code": -1, "reason": str(e)})
+        finally:
+            self._running = False
+            await self.client.disconnect()
 
     async def _on_block(self, block_number: int, processor: BlockProcessor) -> None:
         """Handle new block event."""
@@ -75,6 +79,8 @@ class TradeMonitor:
 
     async def stop(self) -> None:
         """Stop monitoring."""
+        if not self._running:
+            return
         self._running = False
         await self.client.disconnect()
         log.info("Monitor stopped")

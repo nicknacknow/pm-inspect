@@ -44,8 +44,15 @@ docker compose up --build
 
 Notes:
 
-- `docker-compose.yml` sets `REDIS_URL=redis://redis:6379/0` for the publisher container.
+- `docker-compose.yml` starts `pminspect listen`, sets `REDIS_URL=redis://redis:6379/0` for the publisher container, and adds a service healthcheck.
+- The publisher traps SIGINT/SIGTERM so Docker stops it cleanly.
 - Redis is exposed on `localhost:6379` for local subscribers/listeners.
+
+You can also run a one-shot dependency check inside the container:
+
+```bash
+pminspect healthcheck
+```
 
 ## Run Redis only
 
