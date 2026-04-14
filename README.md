@@ -29,9 +29,12 @@ cp .env.example .env
 ```
 
 ```env
-POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
+POLYGON_WSS_URLS=wss://your-first-polygon-wss-endpoint,wss://your-second-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
+
+You can still set `POLYGON_WSS_URL` if you only have one endpoint.
+The app will try `POLYGON_WSS_URLS` entries in order and fall back to `POLYGON_WSS_URL` if needed.
 
 ## Run with Docker Compose (publisher + Redis)
 
