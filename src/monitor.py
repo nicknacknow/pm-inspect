@@ -25,6 +25,7 @@ class TradeMonitor:
         }
         self._running = False
         self._stopped = False
+        self._stop_requested = False
         self._disconnect_lock = asyncio.Lock()
 
     def on(self, event: str, callback: Callable) -> None:
@@ -44,10 +45,18 @@ class TradeMonitor:
         """Start monitoring for trades from target wallets."""
         self._running = True
         self._stopped = False
+        self._stop_requested = False
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
         try:
             await self.client.connect()
+
+            if self._stop_requested:
+                # stop() was called while connect() was in progress.
+                # _disconnect_client() in stop() was a no-op because _ws wasn't
+                # set yet; now that connect() completed, perform the real close.
+                await self.client.disconnect()
+                return
 
             wallet_filter = WalletFilter(target_wallets)
             processor = BlockProcessor(self.client, self.decoder, wallet_filter)
@@ -85,6 +94,7 @@ class TradeMonitor:
         if not self._running:
             return
         self._running = False
+        self._stop_requested = True
         if await self._disconnect_client():
             log.info("Monitor stopped")
 

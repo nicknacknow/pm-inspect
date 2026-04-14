@@ -240,6 +240,38 @@ class CliRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         monitor.client.disconnect.assert_awaited_once()
 
+    async def test_trade_monitor_stop_during_connect_aborts_before_subscribe(self) -> None:
+        monitor = monitor_module.TradeMonitor()
+        connect_blocked = asyncio.Event()
+
+        async def blocking_connect() -> None:
+            await connect_blocked.wait()
+
+        subscribe_called = False
+
+        async def track_subscribe(callback) -> None:
+            nonlocal subscribe_called
+            subscribe_called = True
+
+        monitor.client.connect = AsyncMock(side_effect=blocking_connect)
+        monitor.client.subscribe_blocks = AsyncMock(side_effect=track_subscribe)
+        monitor.client.disconnect = AsyncMock()
+
+        start_task = asyncio.create_task(monitor.start([]))
+        await asyncio.sleep(0)  # let start() reach connect()
+
+        # stop() while connect() is still in progress (before _ws is set)
+        await monitor.stop()
+
+        # unblock connect() to simulate the connection completing after stop
+        connect_blocked.set()
+        await start_task
+
+        self.assertFalse(
+            subscribe_called,
+            "subscribe_blocks should not be called when stop is requested during connect",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
