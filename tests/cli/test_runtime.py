@@ -55,6 +55,7 @@ class FakeMonitor:
         self.callbacks: dict[str, object] = {}
         self.start_wallets: list[str] | None = None
         self.stop_calls = 0
+        self.start_cancelled = False
         self._released = asyncio.Event()
 
     def on(self, event: str, callback) -> None:
@@ -62,7 +63,11 @@ class FakeMonitor:
 
     async def start(self, target_wallets: list[str]) -> None:
         self.start_wallets = target_wallets
-        await self._released.wait()
+        try:
+            await self._released.wait()
+        except asyncio.CancelledError:
+            self.start_cancelled = True
+            raise
 
     async def stop(self) -> None:
         self.stop_calls += 1
@@ -96,8 +101,26 @@ class CliRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
                     await shutdown_task
 
         self.assertEqual(fake_monitor.start_wallets, [])
-        self.assertEqual(fake_monitor.stop_calls, 1)
+        self.assertTrue(fake_monitor.start_cancelled)
         fake_publisher.connect.assert_awaited_once()
+        fake_publisher.close.assert_awaited_once()
+
+    async def test_listen_cleans_up_when_publisher_connect_fails(self) -> None:
+        fake_monitor = FakeMonitor()
+        fake_publisher = AsyncMock()
+        fake_publisher.connect.side_effect = RuntimeError("boom")
+
+        with patch.object(runtime, "TradeMonitor", return_value=fake_monitor), patch.object(
+            runtime, "RedisTradePublisher", return_value=fake_publisher
+        ):
+            with self.assertRaises(RuntimeError):
+                await runtime.listen(
+                    "redis://localhost:6379/0",
+                    install_signal_handlers=False,
+                )
+
+        self.assertEqual(fake_monitor.stop_calls, 0)
+        self.assertIsNone(fake_monitor.start_wallets)
         fake_publisher.close.assert_awaited_once()
 
     async def test_healthcheck_succeeds_when_dependencies_are_reachable(self) -> None:
@@ -141,6 +164,39 @@ class CliRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(OSError):
                 await runtime.healthcheck("redis://localhost:6379/0")
 
+    async def test_healthcheck_times_out_when_redis_connect_hangs(self) -> None:
+        async def hang() -> None:
+            await asyncio.Event().wait()
+
+        publisher_close_mock = AsyncMock()
+        polygon_disconnect_mock = AsyncMock()
+
+        with patch.object(
+            runtime.RedisTradePublisher,
+            "connect",
+            new=AsyncMock(side_effect=hang),
+        ), patch.object(
+            runtime.RedisTradePublisher,
+            "close",
+            new=publisher_close_mock,
+        ), patch.object(
+            runtime.PolygonClient,
+            "connect",
+            new=AsyncMock(),
+        ), patch.object(
+            runtime.PolygonClient,
+            "disconnect",
+            new=polygon_disconnect_mock,
+        ):
+            with self.assertRaises(TimeoutError):
+                await runtime.healthcheck(
+                    "redis://localhost:6379/0",
+                    timeout_seconds=0.01,
+                )
+
+        publisher_close_mock.assert_awaited_once()
+        polygon_disconnect_mock.assert_awaited_once()
+
     def test_healthcheck_command_shows_tidy_error(self) -> None:
         with patch.object(
             cli,
@@ -159,6 +215,28 @@ class CliRuntimeAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         await monitor.stop()
         await monitor.stop()
+
+        monitor.client.disconnect.assert_awaited_once()
+
+    async def test_trade_monitor_stop_while_starting_disconnects_once(self) -> None:
+        monitor = monitor_module.TradeMonitor()
+        release = asyncio.Event()
+
+        monitor.client.connect = AsyncMock()
+
+        async def wait_for_release(callback) -> None:
+            await release.wait()
+
+        async def disconnect_and_release() -> None:
+            release.set()
+
+        monitor.client.subscribe_blocks = AsyncMock(side_effect=wait_for_release)
+        monitor.client.disconnect = AsyncMock(side_effect=disconnect_and_release)
+
+        start_task = asyncio.create_task(monitor.start([]))
+        await asyncio.sleep(0)
+        await monitor.stop()
+        await start_task
 
         monitor.client.disconnect.assert_awaited_once()
 

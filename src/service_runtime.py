@@ -20,9 +20,29 @@ async def listen(
     install_signal_handlers: bool = True,
 ) -> None:
     """Listen to all Polymarket trades and publish events to Redis."""
-    log.info("Tracking ALL Polymarket trades")
     stop_event = shutdown_event or asyncio.Event()
     loop = asyncio.get_running_loop()
+    signal_handlers = (
+        _install_signal_handlers(loop, stop_event) if install_signal_handlers else []
+    )
+    monitor = TradeMonitor()
+    publisher = RedisTradePublisher(redis_url=redis_url, channel=TRADE_TOPIC)
+
+    try:
+        log.info("Tracking ALL Polymarket trades")
+        await publisher.connect()
+        log.info("Publishing trade events", redis_url=redis_url, channel=TRADE_TOPIC)
+        _wire_monitor(monitor, publisher)
+        await _run_monitor_until_shutdown(monitor, stop_event)
+    finally:
+        _remove_signal_handlers(loop, signal_handlers)
+        await publisher.close()
+
+
+def _install_signal_handlers(
+    loop: asyncio.AbstractEventLoop, stop_event: asyncio.Event
+) -> list[signal.Signals]:
+    """Install signal handlers that request shutdown."""
     signal_handlers: list[signal.Signals] = []
 
     def request_shutdown() -> None:
@@ -30,18 +50,26 @@ async def listen(
             log.info("Shutdown requested")
             stop_event.set()
 
-    if install_signal_handlers:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, request_shutdown)
-                signal_handlers.append(sig)
-            except NotImplementedError:
-                continue
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, request_shutdown)
+            signal_handlers.append(sig)
+        except NotImplementedError:
+            continue
 
-    monitor = TradeMonitor()
-    publisher = RedisTradePublisher(redis_url=redis_url, channel=TRADE_TOPIC)
-    await publisher.connect()
-    log.info("Publishing trade events", redis_url=redis_url, channel=TRADE_TOPIC)
+    return signal_handlers
+
+
+def _remove_signal_handlers(
+    loop: asyncio.AbstractEventLoop, signal_handlers: list[signal.Signals]
+) -> None:
+    """Remove signal handlers installed for shutdown."""
+    for sig in signal_handlers:
+        loop.remove_signal_handler(sig)
+
+
+def _wire_monitor(monitor: TradeMonitor, publisher: RedisTradePublisher) -> None:
+    """Attach publisher callbacks to the monitor."""
 
     async def on_trade(trade: TradeData) -> None:
         await publisher.publish_trade(trade)
@@ -50,6 +78,11 @@ async def listen(
     monitor.on("error", lambda e: log.error("Error", error=str(e)))
     monitor.on("close", lambda d: log.warning("Connection closed", details=d))
 
+
+async def _run_monitor_until_shutdown(
+    monitor: TradeMonitor, stop_event: asyncio.Event
+) -> None:
+    """Run the monitor until shutdown is requested."""
     monitor_task = asyncio.create_task(monitor.start([]))
     shutdown_task = asyncio.create_task(stop_event.wait())
     try:
@@ -65,10 +98,6 @@ async def listen(
         shutdown_task.cancel()
         with suppress(asyncio.CancelledError):
             await shutdown_task
-        for sig in signal_handlers:
-            loop.remove_signal_handler(sig)
-        await monitor.stop()
-        await publisher.close()
 
 
 async def healthcheck(redis_url: str, timeout_seconds: float = 10.0) -> None:
@@ -77,8 +106,8 @@ async def healthcheck(redis_url: str, timeout_seconds: float = 10.0) -> None:
     polygon_client = PolygonClient()
 
     try:
-        await publisher.connect()
         async with asyncio.timeout(timeout_seconds):
+            await publisher.connect()
             await polygon_client.connect()
     finally:
         await polygon_client.disconnect()

@@ -24,6 +24,8 @@ class TradeMonitor:
             "close": [],
         }
         self._running = False
+        self._stopped = False
+        self._disconnect_lock = asyncio.Lock()
 
     def on(self, event: str, callback: Callable) -> None:
         """Register event callback."""
@@ -41,6 +43,7 @@ class TradeMonitor:
     async def start(self, target_wallets: list[str]) -> None:
         """Start monitoring for trades from target wallets."""
         self._running = True
+        self._stopped = False
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
         try:
@@ -65,7 +68,7 @@ class TradeMonitor:
                     self.emit("close", {"code": -1, "reason": str(e)})
         finally:
             self._running = False
-            await self.client.disconnect()
+            await self._disconnect_client()
 
     async def _on_block(self, block_number: int, processor: BlockProcessor) -> None:
         """Handle new block event."""
@@ -82,5 +85,14 @@ class TradeMonitor:
         if not self._running:
             return
         self._running = False
-        await self.client.disconnect()
-        log.info("Monitor stopped")
+        if await self._disconnect_client():
+            log.info("Monitor stopped")
+
+    async def _disconnect_client(self) -> bool:
+        """Disconnect the Polygon client once, even if called concurrently."""
+        async with self._disconnect_lock:
+            if self._stopped:
+                return False
+            self._stopped = True
+            await self.client.disconnect()
+            return True
