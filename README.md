@@ -29,9 +29,12 @@ cp .env.example .env
 ```
 
 ```env
-POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
+POLYGON_WSS_URLS=wss://your-first-polygon-wss-endpoint,wss://your-second-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
+
+You can still set `POLYGON_WSS_URL` if you only have one endpoint.
+The app will try `POLYGON_WSS_URLS` entries in order and fall back to `POLYGON_WSS_URL` if needed.
 
 ## Run with Docker Compose (publisher + Redis)
 
@@ -44,8 +47,15 @@ docker compose up --build
 
 Notes:
 
-- `docker-compose.yml` sets `REDIS_URL=redis://redis:6379/0` for the publisher container.
+- `docker-compose.yml` starts `pminspect listen`, sets `REDIS_URL=redis://redis:6379/0` for the publisher container, and adds a service healthcheck.
+- The publisher traps SIGINT/SIGTERM so Docker stops it cleanly.
 - Redis is exposed on `localhost:6379` for local subscribers/listeners.
+
+You can also run a one-shot dependency check inside the container:
+
+```bash
+pminspect healthcheck
+```
 
 ## Run Redis only
 

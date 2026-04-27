@@ -2,12 +2,13 @@
 import asyncio
 import json
 import ssl
+from collections.abc import Iterable
 from typing import Any, Awaitable, Callable, Optional
 
 import aiohttp
 import websockets
 
-from src.constants import POLYGON_WSS_URL
+from src.constants import POLYGON_WSS_URL, POLYGON_WSS_URLS
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -19,12 +20,39 @@ class PolygonClient:
     RECONNECT_DELAY_SECONDS = 5
     RPC_RETRY_DELAY_SECONDS = 1
 
-    def __init__(self, wss_url: str | None = None) -> None:
-        self.wss_url = wss_url or POLYGON_WSS_URL or ""
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
+    def __init__(self, wss_url: str | Iterable[str] | None = None) -> None:
+        self._wss_urls = self._resolve_wss_urls(wss_url)
+        self.wss_url = ""
+        self.http_url = ""
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
+
+    @staticmethod
+    def _dedupe_urls(urls: Iterable[str]) -> list[str]:
+        unique_urls: list[str] = []
+        seen: set[str] = set()
+        for url in urls:
+            cleaned = url.strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                unique_urls.append(cleaned)
+        return unique_urls
+
+    def _resolve_wss_urls(self, wss_urls: str | Iterable[str] | None) -> list[str]:
+        if isinstance(wss_urls, str):
+            return [wss_urls.strip()] if wss_urls.strip() else []
+        if wss_urls is not None:
+            return self._dedupe_urls(wss_urls)
+
+        env_urls = list(POLYGON_WSS_URLS)
+        if POLYGON_WSS_URL:
+            env_urls.append(POLYGON_WSS_URL)
+        return self._dedupe_urls(env_urls)
+
+    @staticmethod
+    def _http_url_for(wss_url: str) -> str:
+        return wss_url.replace("wss://", "https://").rstrip("/")
 
     def _next_id(self) -> int:
         """Generate next JSON-RPC request ID."""
@@ -33,24 +61,53 @@ class PolygonClient:
 
     async def connect(self) -> None:
         """Establish WebSocket connection."""
-        if not self.wss_url:
-            raise ValueError("POLYGON_WSS_URL is not configured")
-
-        log.info("Connecting to WebSocket", url=self.wss_url[:50] + "...")
-        try:
-            # Create SSL context for compatibility
-            ssl_context = ssl.create_default_context()
-
-            self._ws = await websockets.connect(
-                self.wss_url,
-                ping_interval=30,
-                ping_timeout=10,
-                ssl=ssl_context,
+        if not self._wss_urls:
+            raise ValueError(
+                "POLYGON_WSS_URLS or POLYGON_WSS_URL must be configured"
             )
-            log.info("WebSocket connected")
-        except Exception as e:
-            log.error("WebSocket connection failed", error=str(e))
-            raise
+
+        ssl_context = ssl.create_default_context()
+        last_error: Exception | None = None
+
+        for index, candidate_url in enumerate(self._wss_urls, start=1):
+            log.info(
+                "Connecting to WebSocket",
+                url=candidate_url[:50] + "...",
+                endpoint=index,
+                total_endpoints=len(self._wss_urls),
+            )
+            try:
+                self._ws = await websockets.connect(
+                    candidate_url,
+                    ping_interval=30,
+                    ping_timeout=10,
+                    ssl=ssl_context,
+                )
+                self.wss_url = candidate_url
+                self.http_url = self._http_url_for(candidate_url)
+                log.info(
+                    "WebSocket connected",
+                    url=candidate_url,
+                    endpoint=index,
+                    total_endpoints=len(self._wss_urls),
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                log.warning(
+                    "WebSocket connection failed",
+                    url=candidate_url,
+                    endpoint=index,
+                    total_endpoints=len(self._wss_urls),
+                    error=str(exc),
+                )
+                await self.disconnect()
+
+        attempted_urls = ", ".join(self._wss_urls)
+        raise ConnectionError(
+            "Could not connect to any Polygon WebSocket endpoint "
+            f"after trying: {attempted_urls}"
+        ) from last_error
 
     async def disconnect(self) -> None:
         """Close WebSocket and HTTP connections."""
