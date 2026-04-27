@@ -11,12 +11,15 @@ import src.cli as cli
 
 class CliRuntimeTests(unittest.TestCase):
     def test_listen_shows_tidy_error_when_redis_is_unreachable(self) -> None:
-        with patch.object(
-            cli.RedisTradePublisher,
-            "connect",
-            new=AsyncMock(side_effect=RedisConnectionError("refused")),
+        with (
+            patch.object(cli, "POLYGON_WSS_URL", "wss://example.com"),
+            patch.object(
+                cli.RedisTradePublisher,
+                "connect",
+                new=AsyncMock(side_effect=RedisConnectionError("refused")),
+            ),
         ):
-            result = CliRunner().invoke(cli.app, [])
+            result = CliRunner().invoke(cli.app, ["listen"])
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn("Could not connect to Redis", result.output)

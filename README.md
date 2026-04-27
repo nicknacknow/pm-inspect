@@ -75,11 +75,27 @@ redis-cli ping
 pminspect listen [OPTIONS]
 ```
 
+The listener handles `SIGINT`/`SIGTERM` and shuts down Redis/WebSocket connections cleanly.
+
 Options:
 
 | Option | Short | Description |
 |---|---|---|
 | `--redis-url TEXT` |  | Redis URL |
+
+## Health check
+
+Validate required config and Redis connectivity before starting the listener:
+
+```bash
+pminspect check [OPTIONS]
+```
+
+Options:
+
+| Option | Short | Description |
+|---|---|---|
+| `--redis-url TEXT` |  | Redis URL for connectivity check |
 
 ## Template listener usage
 
