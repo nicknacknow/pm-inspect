@@ -24,6 +24,9 @@ class TradeMonitor:
             "close": [],
         }
         self._running = False
+        self._stopped = False
+        self._stop_requested = False
+        self._disconnect_lock = asyncio.Lock()
 
     def on(self, event: str, callback: Callable) -> None:
         """Register event callback."""
@@ -41,27 +44,40 @@ class TradeMonitor:
     async def start(self, target_wallets: list[str]) -> None:
         """Start monitoring for trades from target wallets."""
         self._running = True
+        self._stopped = False
+        self._stop_requested = False
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
-
-        await self.client.connect()
-
-        wallet_filter = WalletFilter(target_wallets)
-        processor = BlockProcessor(self.client, self.decoder, wallet_filter)
-
-        if wallet_filter.is_tracking_all:
-            log.info("Tracking ALL Polymarket trades")
-        else:
-            log.info("Tracking specific wallets", count=wallet_count)
-
         try:
-            await self.client.subscribe_blocks(
-                lambda block_num: self._on_block(block_num, processor)
-            )
-        except Exception as e:
-            log.error("Monitor error", error=str(e))
-            self.emit("error", e)
-            self.emit("close", {"code": -1, "reason": str(e)})
+            await self.client.connect()
+
+            if self._stop_requested:
+                # stop() was called while connect() was in progress.
+                # _disconnect_client() in stop() was a no-op because _ws wasn't
+                # set yet; now that connect() completed, perform the real close.
+                await self.client.disconnect()
+                return
+
+            wallet_filter = WalletFilter(target_wallets)
+            processor = BlockProcessor(self.client, self.decoder, wallet_filter)
+
+            if wallet_filter.is_tracking_all:
+                log.info("Tracking ALL Polymarket trades")
+            else:
+                log.info("Tracking specific wallets", count=wallet_count)
+
+            try:
+                await self.client.subscribe_blocks(
+                    lambda block_num: self._on_block(block_num, processor)
+                )
+            except Exception as e:
+                if self._running:
+                    log.error("Monitor error", error=str(e))
+                    self.emit("error", e)
+                    self.emit("close", {"code": -1, "reason": str(e)})
+        finally:
+            self._running = False
+            await self._disconnect_client()
 
     async def _on_block(self, block_number: int, processor: BlockProcessor) -> None:
         """Handle new block event."""
@@ -75,6 +91,18 @@ class TradeMonitor:
 
     async def stop(self) -> None:
         """Stop monitoring."""
+        if not self._running:
+            return
         self._running = False
-        await self.client.disconnect()
-        log.info("Monitor stopped")
+        self._stop_requested = True
+        if await self._disconnect_client():
+            log.info("Monitor stopped")
+
+    async def _disconnect_client(self) -> bool:
+        """Disconnect the Polygon client once, even if called concurrently."""
+        async with self._disconnect_lock:
+            if self._stopped:
+                return False
+            self._stopped = True
+            await self.client.disconnect()
+            return True
