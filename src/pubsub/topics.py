@@ -2,5 +2,5 @@
 
 TRADE_TOPIC = "trades.raw"
 TRADE_EVENT_TYPE = "trade"
-TRADE_EVENT_VERSION = "1.0.0"
+TRADE_EVENT_VERSION = "2.0.0"
 
