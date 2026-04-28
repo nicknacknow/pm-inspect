@@ -9,16 +9,21 @@ class DecodedOrder:
     salt: int
     maker: str
     signer: str
-    taker: str
     token_id: str
     maker_amount: int
     taker_amount: int
-    expiration: int
-    nonce: int
-    fee_rate_bps: int
     side: int  # 0 = BUY, 1 = SELL
     signature_type: int
+    timestamp: int  # order creation time in milliseconds
+    metadata: bytes
+    builder: bytes
     signature: bytes
+
+
+@dataclass
+class DecodedTransaction:
+    condition_id: str
+    orders: list[DecodedOrder]
 
 
 @dataclass
@@ -30,6 +35,7 @@ class TradeData:
     transaction_hash: str
     wallet: str  # The wallet address that made the trade
     token_id: str
+    condition_id: str
     side: int  # 0 = BUY, 1 = SELL
     maker_amount: int
     taker_amount: int

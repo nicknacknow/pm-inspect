@@ -4,7 +4,7 @@ from typing import Optional
 from eth_abi import decode
 
 from src.core.abi import MATCH_ORDERS_ABI_TYPES, MATCH_ORDERS_SELECTOR
-from src.core.models import DecodedOrder
+from src.core.models import DecodedOrder, DecodedTransaction
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -16,7 +16,7 @@ class TransactionDecoder:
     def __init__(self) -> None:
         log.info("Decoder initialized", selector=MATCH_ORDERS_SELECTOR.hex())
 
-    def decode(self, tx_input: str) -> Optional[list[DecodedOrder]]:
+    def decode(self, tx_input: str) -> Optional[DecodedTransaction]:
         """Decode transaction input data.
 
         Returns None if not a Polymarket matchOrders transaction.
@@ -44,33 +44,41 @@ class TransactionDecoder:
             # Expected for non-Polymarket transactions with same selector
             return None
 
-    def _extract_orders(self, decoded: tuple) -> list[DecodedOrder]:
+    def _extract_orders(self, decoded: tuple) -> DecodedTransaction:
         """Extract all orders from decoded parameters."""
         orders = []
 
-        # decoded[0] = takerOrder, decoded[1] = makerOrders array
-        taker_order, maker_orders, *_ = decoded
+        # decoded[0] = conditionId (bytes32, new in V2)
+        # decoded[1] = takerOrder, decoded[2] = makerOrders array
+        condition_id, taker_order, maker_orders, *_ = decoded
+        condition_id_hex = "0x" + condition_id.hex()
 
         orders.append(self._parse_order(taker_order))
         for order in maker_orders:
             orders.append(self._parse_order(order))
 
-        return orders
+        return DecodedTransaction(condition_id=condition_id_hex, orders=orders)
 
     def _parse_order(self, order_tuple: tuple) -> DecodedOrder:
-        """Parse order tuple into DecodedOrder dataclass."""
+        """Parse order tuple into DecodedOrder dataclass.
+
+        V2 tuple layout (12 fields):
+          0: salt, 1: maker, 2: signer, 3: tokenId,
+          4: makerAmount, 5: takerAmount, 6: side, 7: signatureType,
+          8: timestamp, 9: metadata, 10: builder, 11: signature
+        """
+        
         return DecodedOrder(
             salt=order_tuple[0],
             maker=order_tuple[1],
             signer=order_tuple[2],
-            taker=order_tuple[3],
-            token_id=str(order_tuple[4]),
-            maker_amount=order_tuple[5],
-            taker_amount=order_tuple[6],
-            expiration=order_tuple[7],
-            nonce=order_tuple[8],
-            fee_rate_bps=order_tuple[9],
-            side=order_tuple[10],
-            signature_type=order_tuple[11],
-            signature=order_tuple[12],
+            token_id=str(order_tuple[3]),
+            maker_amount=order_tuple[4],
+            taker_amount=order_tuple[5],
+            side=order_tuple[6],
+            signature_type=order_tuple[7],
+            timestamp=order_tuple[8],
+            metadata=order_tuple[9],
+            builder=order_tuple[10],
+            signature=order_tuple[11],
         )

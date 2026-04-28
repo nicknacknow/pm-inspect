@@ -11,11 +11,11 @@ from src.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# Known Polymarket contract addresses
+# Known Polymarket contract addresses (https://docs.polymarket.com/resources/contracts)
 POLYMARKET_CONTRACTS = {
-    "0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e",  # CTF Exchange
-    "0xc5d563a36ae78145c45a50134d48a1215220f80a",  # NegRisk CTF Exchange
-    "0x56c79347e95530c01a2fc76e732f9566da16e113",  # NegRisk Operator
+    "0xE111180000d2663C0091e4f400237545B87B996B",  # CTF Exchange v2
+    "0xe2222d279d744050d28e00520010520000310F59",  # NegRisk CTF Exchange v2
+    "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",  # NegRisk Operator v2
 }
 
 
@@ -77,11 +77,11 @@ class BlockProcessor:
         self, tx: dict, block_number: int, timestamp: str, receipt: Optional[dict]
     ) -> Optional[TradeData]:
         """Process single transaction and return TradeData if matching."""
-        orders = self.decoder.decode(tx["input"])
-        if not orders:
+        result = self.decoder.decode(tx["input"])
+        if not result:
             return None
 
-        matching_order = self.filter.filter(orders, receipt)
+        matching_order = self.filter.filter(result.orders, receipt)
         if not matching_order:
             return None
 
@@ -91,6 +91,7 @@ class BlockProcessor:
             transaction_hash=tx["hash"],
             wallet=matching_order.maker,
             token_id=matching_order.token_id,
+            condition_id=result.condition_id,
             side=matching_order.side,
             maker_amount=matching_order.maker_amount,
             taker_amount=matching_order.taker_amount,
