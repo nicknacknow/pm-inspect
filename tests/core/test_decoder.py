@@ -15,15 +15,14 @@ def make_order_tuple(
         1,
         maker,
         "0x1111111111111111111111111111111111111111",
-        "0x2222222222222222222222222222222222222222",
         123,
         1_000_000,
         2_000_000,
+        1,
+        1,
         1234567890,
-        7,
-        25,
-        1,
-        1,
+        bytes.fromhex("00" * 32),
+        bytes.fromhex("11" * 32),
         b"signature",
     )
 
@@ -40,43 +39,43 @@ class TransactionDecoderTests(unittest.TestCase):
         decoder = TransactionDecoder()
         taker_order = make_order_tuple()
         maker_order = make_order_tuple(maker="0x3333333333333333333333333333333333333333")
-        abi_decode.return_value = (taker_order, [maker_order], 0, 0, [], 0, [])
+        condition_id = bytes.fromhex("11" * 32)
+        abi_decode.return_value = (condition_id, taker_order, [maker_order], 0, [], 0, [])
 
         tx_input = "0x" + MATCH_ORDERS_SELECTOR.hex() + "deadbeef"
-        orders = decoder.decode(tx_input)
+        decoded = decoder.decode(tx_input)
 
-        self.assertEqual(len(orders or []), 2)
+        self.assertIsNotNone(decoded)
+        self.assertEqual(decoded.condition_id, "0x" + condition_id.hex())
         self.assertEqual(
-            orders,
+            decoded.orders,
             [
                 DecodedOrder(
                     salt=1,
                     maker=taker_order[1],
                     signer=taker_order[2],
-                    taker=taker_order[3],
                     token_id="123",
                     maker_amount=1_000_000,
                     taker_amount=2_000_000,
-                    expiration=1234567890,
-                    nonce=7,
-                    fee_rate_bps=25,
                     side=1,
                     signature_type=1,
+                    timestamp=1234567890,
+                    metadata=bytes.fromhex("00" * 32),
+                    builder=bytes.fromhex("11" * 32),
                     signature=b"signature",
                 ),
                 DecodedOrder(
                     salt=1,
                     maker=maker_order[1],
                     signer=maker_order[2],
-                    taker=maker_order[3],
                     token_id="123",
                     maker_amount=1_000_000,
                     taker_amount=2_000_000,
-                    expiration=1234567890,
-                    nonce=7,
-                    fee_rate_bps=25,
                     side=1,
                     signature_type=1,
+                    timestamp=1234567890,
+                    metadata=bytes.fromhex("00" * 32),
+                    builder=bytes.fromhex("11" * 32),
                     signature=b"signature",
                 ),
             ],

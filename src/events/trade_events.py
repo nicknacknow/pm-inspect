@@ -33,6 +33,7 @@ def deserialize_trade_event(payload: str) -> TradeData:
         transaction_hash=str(trade["transaction_hash"]),
         wallet=str(trade["wallet"]),
         token_id=str(trade["token_id"]),
+        condition_id=str(trade["condition_id"]),
         side=int(trade["side"]),
         maker_amount=int(trade["maker_amount"]),
         taker_amount=int(trade["taker_amount"]),
