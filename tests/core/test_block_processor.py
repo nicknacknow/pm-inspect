@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 from src.core.block_processor import BlockProcessor
-from src.core.models import DecodedOrder, TradeData
+from src.core.models import DecodedOrder, DecodedTransaction, TradeData
 
 
 def make_order() -> DecodedOrder:
@@ -13,15 +13,14 @@ def make_order() -> DecodedOrder:
         salt=1,
         maker="0xaabbccddeeff00112233445566778899aabbccdd",
         signer="0x1111111111111111111111111111111111111111",
-        taker="0x2222222222222222222222222222222222222222",
         token_id="123",
         maker_amount=1_000_000,
         taker_amount=2_000_000,
-        expiration=1234567890,
-        nonce=7,
-        fee_rate_bps=25,
         side=1,
         signature_type=1,
+        timestamp=1234567890,
+        metadata=bytes.fromhex("00" * 32),
+        builder=bytes.fromhex("11" * 32),
         signature=b"signature",
     )
 
@@ -49,7 +48,11 @@ class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
 
         decoder = Mock()
         matching_order = make_order()
-        decoder.decode.return_value = [matching_order]
+        condition_id = "0x" + "11" * 32
+        decoder.decode.return_value = DecodedTransaction(
+            condition_id=condition_id,
+            orders=[matching_order],
+        )
 
         wallet_filter = Mock()
         wallet_filter.filter.return_value = matching_order
@@ -67,6 +70,7 @@ class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
                     transaction_hash="0xaaa",
                     wallet=matching_order.maker,
                     token_id=matching_order.token_id,
+                    condition_id=condition_id,
                     side=matching_order.side,
                     maker_amount=matching_order.maker_amount,
                     taker_amount=matching_order.taker_amount,

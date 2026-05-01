@@ -14,6 +14,7 @@ class TradeEventTests(unittest.TestCase):
             transaction_hash="0xabcdef1234567890",
             wallet="0x1234567890abcdef1234567890abcdef12345678",
             token_id="999",
+            condition_id="0x" + "11" * 32,
             side=0,
             maker_amount=1_000_000,
             taker_amount=2_000_000,
@@ -26,9 +27,9 @@ class TradeEventTests(unittest.TestCase):
 
     def test_deserialize_rejects_invalid_payload(self) -> None:
         invalid_payload = (
-            '{"event_type":"trade","event_version":"1.0.0",'
+            '{"event_type":"trade","event_version":"2.0.0",'
             '"trade":{"block_number":1,"timestamp":"2026-01-01T00:00:00+00:00",'
-            '"wallet":"0x1234567890abcdef1234567890abcdef12345678","token_id":"1",'
+            '"transaction_hash":"0xabcdef","wallet":"0x1234567890abcdef1234567890abcdef12345678","token_id":"1",'
             '"side":0,"maker_amount":1,"taker_amount":2}}'
         )
 

@@ -11,15 +11,14 @@ def make_order(maker: str = "0xaabbccddeeff00112233445566778899aabbccdd") -> Dec
         salt=1,
         maker=maker,
         signer="0x1111111111111111111111111111111111111111",
-        taker="0x2222222222222222222222222222222222222222",
         token_id="123",
         maker_amount=1_000_000,
         taker_amount=2_000_000,
-        expiration=1234567890,
-        nonce=7,
-        fee_rate_bps=25,
         side=0,
         signature_type=1,
+        timestamp=1234567890,
+        metadata=bytes.fromhex("00" * 32),
+        builder=bytes.fromhex("11" * 32),
         signature=b"signature",
     )
 

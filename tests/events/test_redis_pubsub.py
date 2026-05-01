@@ -14,6 +14,7 @@ def make_trade() -> TradeData:
         transaction_hash="0xabcdef1234567890",
         wallet="0x1234567890abcdef1234567890abcdef12345678",
         token_id="999",
+        condition_id="0x" + "11" * 32,
         side=0,
         maker_amount=1_000_000,
         taker_amount=2_000_000,
@@ -28,7 +29,10 @@ class RedisTradePublisherTests(unittest.IsolatedAsyncioTestCase):
             await publisher.publish_trade(make_trade())
 
     @patch("src.events.redis_pubsub.Redis.from_url")
-    @patch("src.events.redis_pubsub.serialize_trade_event", return_value='{"event_type":"trade"}')
+    @patch(
+        "src.events.redis_pubsub.serialize_trade_event",
+        return_value='{"event_type":"trade","event_version":"2.0.0"}',
+    )
     async def test_connect_publish_and_close(self, serialize_mock, from_url_mock) -> None:
         redis_client = AsyncMock()
         from_url_mock.return_value = redis_client

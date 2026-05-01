@@ -6,7 +6,7 @@ from jsonschema import ValidationError, validate
 
 from src.pubsub.schema_loader import load_schema
 
-_TRADE_SCHEMA_PATH = "polymarket/trade/v1.0.0/schema.json"
+_TRADE_SCHEMA_PATH = "polymarket/trade/v2.0.0/schema.json"
 
 
 def validate_trade_event_payload(payload: dict[str, Any]) -> None:
