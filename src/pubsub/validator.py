@@ -5,8 +5,9 @@ from typing import Any
 from jsonschema import ValidationError, validate
 
 from src.pubsub.schema_loader import load_schema
+from src.pubsub.topics import TRADE_EVENT_TYPE, TRADE_EVENT_VERSION
 
-_TRADE_SCHEMA_PATH = "polymarket/trade/v2.0.0/schema.json"
+_TRADE_SCHEMA_PATH = f"polymarket/{TRADE_EVENT_TYPE}/v{TRADE_EVENT_VERSION}/schema.json"
 
 
 def validate_trade_event_payload(payload: dict[str, Any]) -> None:
