@@ -1,5 +1,6 @@
 """Block processing for trade extraction."""
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Optional
 
 from src.api.polygon import PolygonClient
@@ -7,6 +8,7 @@ from src.core.abi import CTF_MATCH_ORDERS_SELECTOR, NEGRISK_MATCH_ORDERS_SELECTO
 from src.core.decoder import TransactionDecoder
 from src.core.models import TradeData
 from src.core.wallet_filter import WalletFilter
+from src.metrics import metrics
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -34,44 +36,52 @@ class BlockProcessor:
 
     async def process_block(self, block_number: int) -> list[TradeData]:
         """Process all transactions in a block."""
+        started_at = perf_counter()
         trades = []
-        block = await self.client.get_block_with_transactions(block_number)
-        receipts = await self.client.get_block_receipts(block_number)
+        try:
+            block = await self.client.get_block_with_transactions(block_number)
+            receipts = await self.client.get_block_receipts(block_number)
 
-        # Extract block timestamp (hex Unix epoch → ISO 8601)
-        block_ts = int(block["timestamp"], 16)
-        timestamp = datetime.fromtimestamp(block_ts, tz=timezone.utc).isoformat()
+            # Extract block timestamp (hex Unix epoch → ISO 8601)
+            block_ts = int(block["timestamp"], 16)
+            timestamp = datetime.fromtimestamp(block_ts, tz=timezone.utc).isoformat()
 
-        # Build receipt lookup by tx hash
-        receipt_map = {r["transactionHash"]: r for r in receipts}
+            # Build receipt lookup by tx hash
+            receipt_map = {r["transactionHash"]: r for r in receipts}
 
-        log.info("Processing block", block=block_number, txs=len(block["transactions"]))
+            log.info("Processing block", block=block_number, txs=len(block["transactions"]))
+            metrics.transactions_scanned_total.inc(len(block["transactions"]))
 
-        # Debug: check for Polymarket transactions
-        ctf_selector = "0x" + CTF_MATCH_ORDERS_SELECTOR.hex()
-        negrisk_selector = "0x" + NEGRISK_MATCH_ORDERS_SELECTOR.hex()
+            # Debug: check for Polymarket transactions
+            ctf_selector = "0x" + CTF_MATCH_ORDERS_SELECTOR.hex()
+            negrisk_selector = "0x" + NEGRISK_MATCH_ORDERS_SELECTOR.hex()
 
-        for tx in block["transactions"]:
-            tx_input = tx.get("input", "")
-            tx_to = (tx.get("to") or "").lower()
+            for tx in block["transactions"]:
+                tx_input = tx.get("input", "")
+                tx_to = (tx.get("to") or "").lower()
 
-            # Check if this is a Polymarket contract
-            if tx_to in POLYMARKET_CONTRACTS:
-                selector = tx_input[:10] if len(tx_input) >= 10 else "none"
-                log.info(
-                    "Found Polymarket contract tx",
-                    to=tx_to[:10],
-                    selector=selector,
-                    matches_ctf=(selector == ctf_selector),
-                    matches_negrisk=(selector == negrisk_selector),
-                )
+                # Check if this is a Polymarket contract
+                if tx_to in POLYMARKET_CONTRACTS:
+                    selector = tx_input[:10] if len(tx_input) >= 10 else "none"
+                    log.info(
+                        "Found Polymarket contract tx",
+                        to=tx_to[:10],
+                        selector=selector,
+                        matches_ctf=(selector == ctf_selector),
+                        matches_negrisk=(selector == negrisk_selector),
+                    )
 
-            receipt = receipt_map.get(tx["hash"])
-            trade = self._process_transaction(tx, block_number, timestamp, receipt)
-            if trade:
-                trades.append(trade)
+                receipt = receipt_map.get(tx["hash"])
+                trade = self._process_transaction(tx, block_number, timestamp, receipt)
+                if trade:
+                    trades.append(trade)
 
-        return trades
+            metrics.blocks_processed_total.inc()
+            metrics.latest_block_number.set(block_number)
+            metrics.trades_detected_total.inc(len(trades))
+            return trades
+        finally:
+            metrics.block_processing_seconds.observe(perf_counter() - started_at)
 
     def _process_transaction(
         self, tx: dict, block_number: int, timestamp: str, receipt: Optional[dict]
