@@ -9,7 +9,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - pminspect-internal
+      - pm-inspect-internal
 
   pminspect:
     build:
@@ -23,12 +23,12 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - pminspect-internal
+      - pm-inspect-internal
       - pm-project
     command: ["pminspect"]
 
 networks:
-  pminspect-internal:
+  pm-inspect-internal:
   pm-project:
     external: true
     name: pm-project
