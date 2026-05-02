@@ -38,8 +38,8 @@ REDIS_URL=redis://localhost:6379/0
 Use Docker Compose to run both services together:
 
 ```bash
-# create the shared observability network once
-docker network create pm-observability
+# create the shared pm-project network once
+docker network create pm-project
 # after completing the Configuration section
 docker compose up --build
 ```
@@ -105,7 +105,7 @@ Each published message is JSON:
 ```json
 {
   "event_type": "trade",
-  "event_version": "2.0.0",
+- The compose stack joins the shared `pm-project` Docker network so other PM services can be attached later.
   "trade": {
     "block_number": 0,
     "timestamp": "2026-01-01T00:00:00+00:00",
