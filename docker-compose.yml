@@ -8,6 +8,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - app
 
   pminspect:
     build:
@@ -20,4 +22,13 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+      - app
+      - pm-observability
     command: ["pminspect"]
+
+networks:
+  app:
+  pm-observability:
+    external: true
+    name: pm-observability

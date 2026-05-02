@@ -38,6 +38,8 @@ REDIS_URL=redis://localhost:6379/0
 Use Docker Compose to run both services together:
 
 ```bash
+# create the shared observability network once
+docker network create pm-observability
 # after completing the Configuration section
 docker compose up --build
 ```
@@ -45,6 +47,7 @@ docker compose up --build
 Notes:
 
 - `docker-compose.yml` sets `REDIS_URL=redis://redis:6379/0` for the publisher container.
+- The compose stack joins the shared `pm-observability` Docker network so other PM services can be attached later.
 - Redis is exposed on `localhost:6379` for local subscribers/listeners.
 
 ## Run Redis only
