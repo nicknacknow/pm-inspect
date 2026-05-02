@@ -107,8 +107,14 @@ class PolygonClient:
                 log.warning("RPC request failed, retrying", method=method, error=str(e))
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
 
+    async def get_latest_block_number(self) -> int:
+        """Fetch the latest chain block number."""
+        return int(await self._rpc_call("eth_blockNumber"), 16)
+
     async def subscribe_blocks(
-        self, callback: Callable[[int], Awaitable[None]]
+        self,
+        callback: Callable[[int], Awaitable[None]],
+        last_processed_block: int | None = None,
     ) -> None:
         """Subscribe to new block headers via WebSocket."""
         if not self._ws:
@@ -123,6 +129,19 @@ class PolygonClient:
         }
         await self._ws.send(json.dumps(subscribe_msg))
         await self._ws.recv()  # subscription confirmation
+
+        if last_processed_block is not None:
+            latest_block = await self.get_latest_block_number()
+            if latest_block > last_processed_block:
+                log.info(
+                    "Catching up missed blocks",
+                    from_block=last_processed_block + 1,
+                    to_block=latest_block,
+                    count=latest_block - last_processed_block,
+                )
+
+                for block_number in range(last_processed_block + 1, latest_block + 1):
+                    await callback(block_number)
 
         # Listen for new blocks
         async for message in self._ws:

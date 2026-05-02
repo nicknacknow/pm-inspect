@@ -24,6 +24,7 @@ class TradeMonitor:
             "close": [],
         }
         self._running = False
+        self._last_block_number: int | None = None
 
     def on(self, event: str, callback: Callable) -> None:
         """Register event callback."""
@@ -44,8 +45,6 @@ class TradeMonitor:
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
 
-        await self.client.connect()
-
         wallet_filter = WalletFilter(target_wallets)
         processor = BlockProcessor(self.client, self.decoder, wallet_filter)
 
@@ -55,18 +54,45 @@ class TradeMonitor:
             log.info("Tracking specific wallets", count=wallet_count)
 
         try:
-            await self.client.subscribe_blocks(
-                lambda block_num: self._on_block(block_num, processor)
-            )
-        except Exception as e:
-            log.error("Monitor error", error=str(e))
-            self.emit("error", e)
-            self.emit("close", {"code": -1, "reason": str(e)})
+            while self._running:
+                error: Exception | None = None
+
+                try:
+                    await self.client.connect()
+                    await self.client.subscribe_blocks(
+                        lambda block_num: self._on_block(block_num, processor),
+                        last_processed_block=self._last_block_number,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except ValueError:
+                    raise
+                except Exception as e:
+                    error = e
+
+                if not self._running:
+                    break
+
+                if error is None:
+                    log.warning("Connection closed", details={"code": -1, "reason": "subscription ended"})
+                    self.emit("close", {"code": -1, "reason": "subscription ended"})
+                else:
+                    log.error("Monitor error", error=str(error))
+                    self.emit("error", error)
+                    self.emit("close", {"code": -1, "reason": str(error)})
+
+                await self.client.disconnect()
+
+                await asyncio.sleep(self.client.RECONNECT_DELAY_SECONDS)
+        finally:
+            self._running = False
+            await self.client.disconnect()
 
     async def _on_block(self, block_number: int, processor: BlockProcessor) -> None:
         """Handle new block event."""
         try:
             trades = await processor.process_block(block_number)
+            self._last_block_number = block_number
             for trade in trades:
                 self.emit("transaction", trade)
         except Exception as e:
