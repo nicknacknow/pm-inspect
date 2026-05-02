@@ -2,12 +2,43 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from src.monitor import TradeMonitor
 
 
 class TradeMonitorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_on_block_waits_for_transaction_callbacks_before_checkpoint(
+        self,
+    ) -> None:
+        monitor = TradeMonitor()
+        processor = Mock()
+        processor.process_block = AsyncMock(return_value=[object()])
+
+        callback_started = asyncio.Event()
+        callback_release = asyncio.Event()
+        observed_last_block_numbers: list[int | None] = []
+
+        async def on_trade(trade) -> None:
+            observed_last_block_numbers.append(monitor._last_block_number)
+            callback_started.set()
+            await callback_release.wait()
+            observed_last_block_numbers.append(monitor._last_block_number)
+
+        monitor.on("transaction", on_trade)
+
+        task = asyncio.create_task(monitor._on_block(123, processor))
+
+        await callback_started.wait()
+        self.assertIsNone(monitor._last_block_number)
+
+        callback_release.set()
+        await task
+
+        self.assertEqual(monitor._last_block_number, 123)
+        self.assertEqual(observed_last_block_numbers, [None, None])
+        processor.process_block.assert_awaited_once_with(123)
+
     async def test_start_reconnects_and_preserves_last_block_number(self) -> None:
         monitor = TradeMonitor()
 

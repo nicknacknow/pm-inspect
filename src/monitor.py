@@ -1,6 +1,7 @@
 """Real-time trade monitor via WebSocket."""
 
 import asyncio
+import inspect
 from typing import Any, Callable, Optional
 
 from src.api.polygon import PolygonClient
@@ -38,6 +39,13 @@ class TradeMonitor:
                 asyncio.create_task(callback(data))
             else:
                 callback(data)
+
+    async def emit_async(self, event: str, data: Any) -> None:
+        """Emit event and wait for async callbacks to finish."""
+        for callback in self._callbacks.get(event, []):
+            result = callback(data)
+            if inspect.isawaitable(result):
+                await result
 
     async def start(self, target_wallets: list[str]) -> None:
         """Start monitoring for trades from target wallets."""
@@ -92,9 +100,9 @@ class TradeMonitor:
         """Handle new block event."""
         try:
             trades = await processor.process_block(block_number)
-            self._last_block_number = block_number
             for trade in trades:
-                self.emit("transaction", trade)
+                await self.emit_async("transaction", trade)
+            self._last_block_number = block_number
         except Exception as e:
             log.error("Block processing error", block=block_number, error=str(e))
             self.emit("error", e)
