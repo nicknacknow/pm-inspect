@@ -4,23 +4,28 @@ import unittest
 
 from src.pubsub.schema_loader import load_schema
 from src.pubsub.validator import validate_trade_event_payload
+from src.pubsub.topics import TRADE_EVENT_TYPE, TRADE_EVENT_VERSION
+
+
+_TRADE_SCHEMA_PATH = f"polymarket/{TRADE_EVENT_TYPE}/v{TRADE_EVENT_VERSION}/schema.json"
+_TRADE_SCHEMA_TITLE = f"polymarket.{TRADE_EVENT_TYPE}.v{TRADE_EVENT_VERSION}"
 
 
 class PubSubSchemaTests(unittest.TestCase):
     def test_load_schema_reads_bundled_trade_schema(self) -> None:
-        schema = load_schema("polymarket/trade/v2.0.0/schema.json")
+        schema = load_schema(_TRADE_SCHEMA_PATH)
 
-        self.assertEqual(schema["title"], "polymarket.trade.v2.0.0")
+        self.assertEqual(schema["title"], _TRADE_SCHEMA_TITLE)
         self.assertFalse(schema["additionalProperties"])
 
     def test_load_schema_missing_file_raises(self) -> None:
         with self.assertRaises(FileNotFoundError):
-            load_schema("polymarket/trade/v2.0.0/missing.json")
+            load_schema(_TRADE_SCHEMA_PATH.replace("schema.json", "missing.json"))
 
     def test_validate_trade_event_payload_accepts_valid_payload(self) -> None:
         payload = {
-            "event_type": "trade",
-            "event_version": "2.0.0",
+            "event_type": TRADE_EVENT_TYPE,
+            "event_version": TRADE_EVENT_VERSION,
             "trade": {
                 "block_number": 1,
                 "timestamp": "2026-01-01T00:00:00+00:00",
@@ -38,8 +43,8 @@ class PubSubSchemaTests(unittest.TestCase):
 
     def test_validate_trade_event_payload_rejects_extra_trade_fields(self) -> None:
         payload = {
-            "event_type": "trade",
-            "event_version": "2.0.0",
+            "event_type": TRADE_EVENT_TYPE,
+            "event_version": TRADE_EVENT_VERSION,
             "trade": {
                 "block_number": 1,
                 "timestamp": "2026-01-01T00:00:00+00:00",

@@ -95,20 +95,21 @@ Edit `REDIS_URL`, `CHANNEL`, and `MIN_USDC` at the top of the file.
 
 `pminspect` validates events against the bundled schema at:
 
-`src/pubsub/schemas/polymarket/trade/v1.0.0/schema.json`
+`src/pubsub/schemas/polymarket/trade/v2.0.0/schema.json`
 
 Each published message is JSON:
 
 ```json
 {
   "event_type": "trade",
-  "event_version": "1.0.0",
+  "event_version": "2.0.0",
   "trade": {
     "block_number": 0,
     "timestamp": "2026-01-01T00:00:00+00:00",
     "transaction_hash": "0x...",
     "wallet": "0x...",
     "token_id": "123",
+    "condition_id": "0x...",
     "side": 0,
     "maker_amount": 1000000,
     "taker_amount": 2000000
