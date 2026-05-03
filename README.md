@@ -105,7 +105,7 @@ Each published message is JSON:
 ```json
 {
   "event_type": "trade",
-- The compose stack joins the shared `pm-project` Docker network so other PM services can be attached later.
+  "event_version": "2.0.0",
   "trade": {
     "block_number": 0,
     "timestamp": "2026-01-01T00:00:00+00:00",
