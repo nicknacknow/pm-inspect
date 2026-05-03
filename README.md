@@ -48,7 +48,19 @@ Notes:
 
 - `docker-compose.yml` sets `REDIS_URL=redis://redis:6379/0` for the publisher container.
 - The compose stack joins the shared `pm-project` Docker network so other PM services can be attached later.
+- `pminspect` exposes Prometheus metrics on port `8001` at `/metrics` by default.
 - Redis is exposed on `localhost:6379` for local subscribers/listeners.
+
+## Metrics
+
+`pminspect` publishes operational metrics for the monitor loop, Polygon RPC calls,
+block processing, Redis publishing, and trade payload validation.
+
+When the observability stack is running, Prometheus scrapes it at:
+
+```text
+http://localhost:8001/metrics
+```
 
 ## Run Redis only
 

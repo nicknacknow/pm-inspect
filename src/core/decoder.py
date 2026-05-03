@@ -5,6 +5,7 @@ from eth_abi import decode
 
 from src.core.abi import MATCH_ORDERS_ABI_TYPES, MATCH_ORDERS_SELECTOR
 from src.core.models import DecodedOrder, DecodedTransaction
+from src.metrics import metrics
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -41,6 +42,7 @@ class TransactionDecoder:
 
             return self._extract_orders(decoded)
         except Exception:
+            metrics.transaction_decode_errors_total.inc()
             # Expected for non-Polymarket transactions with same selector
             return None
 
