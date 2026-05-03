@@ -20,6 +20,8 @@ POLYMARKET_CONTRACTS = {
     "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",  # NegRisk Operator v2
 }
 
+# Lowercase all contract addresses once so membership checks with tx_to.lower() are reliable
+POLYMARKET_CONTRACTS = {addr.lower() for addr in POLYMARKET_CONTRACTS}
 
 class BlockProcessor:
     """Processes blocks and extracts matching trades."""
