@@ -15,3 +15,6 @@ POLYGON_WSS_URL = os.getenv("POLYGON_WSS_URL")
 
 # Redis Pub/Sub settings
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0").strip()
+
+# Prometheus metrics endpoint
+METRICS_PORT = int(os.getenv("METRICS_PORT", "8001"))

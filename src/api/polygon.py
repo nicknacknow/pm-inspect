@@ -8,6 +8,7 @@ import aiohttp
 import websockets
 
 from src.constants import POLYGON_WSS_URL
+from src.metrics import metrics
 from src.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -47,6 +48,7 @@ class PolygonClient:
                 ping_timeout=10,
                 ssl=ssl_context,
             )
+            metrics.polygon_connected.set(1)
             log.info("WebSocket connected")
         except Exception as e:
             log.error("WebSocket connection failed", error=str(e))
@@ -60,6 +62,7 @@ class PolygonClient:
         if self._http_session:
             await self._http_session.close()
             self._http_session = None
+        metrics.polygon_connected.set(0)
 
     async def _get_http_session(self) -> aiohttp.ClientSession:
         """Get or create reusable HTTP session."""
@@ -91,6 +94,7 @@ class PolygonClient:
                     result = await resp.json()
 
                     if "error" in result:
+                        metrics.rpc_failures_total.labels(method=method).inc()
                         log.warning(
                             "RPC error, retrying",
                             method=method,
@@ -104,6 +108,7 @@ class PolygonClient:
                     return result["result"]
 
             except aiohttp.ClientError as e:
+                metrics.rpc_failures_total.labels(method=method).inc()
                 log.warning("RPC request failed, retrying", method=method, error=str(e))
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
 

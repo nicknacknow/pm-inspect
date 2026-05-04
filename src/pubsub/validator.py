@@ -6,6 +6,7 @@ from jsonschema import ValidationError, validate
 
 from src.pubsub.schema_loader import load_schema
 from src.pubsub.topics import TRADE_EVENT_TYPE, TRADE_EVENT_VERSION
+from src.metrics import metrics
 
 _TRADE_SCHEMA_PATH = f"polymarket/{TRADE_EVENT_TYPE}/v{TRADE_EVENT_VERSION}/schema.json"
 
@@ -16,5 +17,6 @@ def validate_trade_event_payload(payload: dict[str, Any]) -> None:
     try:
         validate(instance=payload, schema=schema)
     except ValidationError as exc:
+        metrics.trade_event_validation_failures_total.inc()
         raise ValueError(f"trade event schema validation failed: {exc.message}") from exc
 

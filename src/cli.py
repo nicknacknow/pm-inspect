@@ -5,10 +5,11 @@ import asyncio
 import typer
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from src.constants import REDIS_URL
+from src.constants import METRICS_PORT, REDIS_URL
 from src.core.models import TradeData
 from src.events.redis_pubsub import RedisTradePublisher
 from src.monitor import TradeMonitor
+from src.metrics import metrics
 from src.pubsub.topics import TRADE_TOPIC
 from src.utils.logging import get_logger
 
@@ -26,9 +27,17 @@ def listen(
         "--redis-url",
         help="Redis URL for trade event publishing",
     ),
+    metrics_port: int = typer.Option(
+        METRICS_PORT,
+        "--metrics-port",
+        envvar="METRICS_PORT",
+        help="Prometheus metrics port",
+    ),
 ) -> None:
     """Listen to all Polymarket trades and publish events to Redis."""
     log.info("Tracking ALL Polymarket trades")
+    metrics.serve(metrics_port)
+    log.info("Prometheus metrics server started", port=metrics_port)
     try:
         asyncio.run(_listen(redis_url=redis_url))
     except RedisConnectionError as exc:
