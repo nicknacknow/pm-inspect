@@ -26,6 +26,24 @@ def make_order() -> DecodedOrder:
 
 
 class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_process_block_returns_empty_when_block_missing(self) -> None:
+        client = AsyncMock()
+        client.get_block_with_transactions.return_value = None
+        client.get_block_receipts = AsyncMock()
+
+        decoder = Mock()
+        wallet_filter = Mock()
+
+        processor = BlockProcessor(client, decoder, wallet_filter)
+
+        trades = await processor.process_block(456)
+
+        self.assertEqual(trades, [])
+        client.get_block_with_transactions.assert_awaited_once_with(456)
+        client.get_block_receipts.assert_not_awaited()
+        decoder.decode.assert_not_called()
+        wallet_filter.filter.assert_not_called()
+
     async def test_process_block_maps_matching_transaction_to_trade(self) -> None:
         block_number = 123
         block_ts = 1_700_000_000
@@ -83,6 +101,38 @@ class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
         wallet_filter.filter.assert_called_once_with(
             [matching_order], {"transactionHash": "0xaaa", "status": "0x1"}
         )
+
+    async def test_process_block_skips_malformed_transactions(self) -> None:
+        client = AsyncMock()
+        client.get_block_with_transactions.return_value = {
+            "timestamp": "0x1",
+            "transactions": [
+                None,
+                {"hash": "0xaaa"},
+                {"input": "0xdeadbeef"},
+                {"hash": "0xbbb", "input": ""},
+                {"hash": "0xccc", "input": "0xdeadbeef", "to": "0x0"},
+            ],
+        }
+        client.get_block_receipts.return_value = []
+
+        decoder = Mock()
+        matching_order = make_order()
+        decoder.decode.return_value = DecodedTransaction(
+            condition_id="0x" + "22" * 32,
+            orders=[matching_order],
+        )
+
+        wallet_filter = Mock()
+        wallet_filter.filter.return_value = None
+
+        processor = BlockProcessor(client, decoder, wallet_filter)
+
+        trades = await processor.process_block(789)
+
+        self.assertEqual(trades, [])
+        decoder.decode.assert_called_once_with("0xdeadbeef")
+        wallet_filter.filter.assert_called_once_with([matching_order], None)
 
 
 if __name__ == "__main__":
