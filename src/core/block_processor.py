@@ -1,4 +1,5 @@
 """Block processing for trade extraction."""
+import asyncio
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Optional
@@ -41,24 +42,48 @@ class BlockProcessor:
         started_at = perf_counter()
         trades = []
         try:
-            block = await self.client.get_block_with_transactions(block_number)
+            block = None
+            for _ in range(3):
+                block = await self.client.get_block_with_transactions(block_number)
+                if block:
+                    break
+                await asyncio.sleep(0.25)
+
+            if not block:
+                log.warning("Block not available yet", block=block_number)
+                return []
+
             receipts = await self.client.get_block_receipts(block_number)
 
             # Extract block timestamp (hex Unix epoch → ISO 8601)
-            block_ts = int(block["timestamp"], 16)
+            block_ts_hex = block.get("timestamp")
+            if not block_ts_hex:
+                log.warning("Block missing timestamp", block=block_number)
+                return []
+            block_ts = int(block_ts_hex, 16)
             timestamp = datetime.fromtimestamp(block_ts, tz=timezone.utc).isoformat()
 
-            # Build receipt lookup by tx hash
-            receipt_map = {r["transactionHash"]: r for r in receipts}
+            # Build receipt lookup by tx hash, skipping null/malformed receipts
+            receipt_map: dict[str, dict] = {}
+            for r in receipts:
+                if not isinstance(r, dict):
+                    continue
+                tx_hash = r.get("transactionHash")
+                if tx_hash:
+                    receipt_map[tx_hash] = r
 
-            log.info("Processing block", block=block_number, txs=len(block["transactions"]))
-            metrics.transactions_scanned_total.inc(len(block["transactions"]))
+            transactions = block.get("transactions") or []
+            log.info("Processing block", block=block_number, txs=len(transactions))
+            metrics.transactions_scanned_total.inc(len(transactions))
 
             # Debug: check for Polymarket transactions
             ctf_selector = "0x" + CTF_MATCH_ORDERS_SELECTOR.hex()
             negrisk_selector = "0x" + NEGRISK_MATCH_ORDERS_SELECTOR.hex()
 
-            for tx in block["transactions"]:
+            for tx in transactions:
+                if not isinstance(tx, dict):
+                    continue
+
                 tx_input = tx.get("input", "")
                 tx_to = (tx.get("to") or "").lower()
 
@@ -73,7 +98,11 @@ class BlockProcessor:
                         matches_negrisk=(selector == negrisk_selector),
                     )
 
-                receipt = receipt_map.get(tx["hash"])
+                tx_hash = tx.get("hash")
+                if not tx_hash:
+                    continue
+
+                receipt = receipt_map.get(tx_hash)
                 trade = self._process_transaction(tx, block_number, timestamp, receipt)
                 if trade:
                     trades.append(trade)
@@ -89,7 +118,8 @@ class BlockProcessor:
         self, tx: dict, block_number: int, timestamp: str, receipt: Optional[dict]
     ) -> Optional[TradeData]:
         """Process single transaction and return TradeData if matching."""
-        result = self.decoder.decode(tx["input"])
+        tx_input = tx.get("input") or ""
+        result = self.decoder.decode(tx_input)
         if not result:
             return None
 
@@ -97,10 +127,14 @@ class BlockProcessor:
         if not matching_order:
             return None
 
+        tx_hash = tx.get("hash")
+        if not tx_hash:
+            return None
+
         return TradeData(
             block_number=block_number,
             timestamp=timestamp,
-            transaction_hash=tx["hash"],
+            transaction_hash=tx_hash,
             wallet=matching_order.maker,
             token_id=matching_order.token_id,
             condition_id=result.condition_id,
