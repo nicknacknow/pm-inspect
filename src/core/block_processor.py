@@ -89,7 +89,7 @@ class BlockProcessor:
             return
 
         selector = tx_input[:10] if len(tx_input) >= 10 else "none"
-        log.info(
+        log.debug(
             "Found Polymarket contract tx",
             to=tx_to[:10],
             selector=selector,
