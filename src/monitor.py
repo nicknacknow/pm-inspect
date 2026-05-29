@@ -31,13 +31,19 @@ class TradeMonitor:
         if event in self._callbacks:
             self._callbacks[event].append(callback)
 
-    def emit(self, event: str, data: Any) -> None:
+    async def emit(self, event: str, data: Any) -> None:
         """Emit event to all registered callbacks."""
         for callback in self._callbacks.get(event, []):
-            if asyncio.iscoroutinefunction(callback):
-                asyncio.create_task(callback(data))
-            else:
-                callback(data)
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(data)
+                else:
+                    callback(data)
+            except Exception as exc:
+                metrics.event_handler_errors_total.labels(event=event).inc()
+                log.error("Event handler error", event=event, error=str(exc))
+                if event != "error":
+                    await self.emit("error", exc)
 
     async def start(self, target_wallets: list[str]) -> None:
         """Start monitoring for trades from target wallets."""
@@ -46,31 +52,40 @@ class TradeMonitor:
         wallet_count = len(target_wallets) if target_wallets else 0
         log.info("Starting monitor", wallet_count=wallet_count)
 
+        wallet_filter = WalletFilter(target_wallets)
+        processor = BlockProcessor(self.client, self.decoder, wallet_filter)
+
+        if wallet_filter.is_tracking_all:
+            log.info("Tracking ALL Polymarket trades")
+        else:
+            log.info("Tracking specific wallets", count=wallet_count)
+
         try:
-            await self.client.connect()
+            while self._running:
+                try:
+                    metrics.monitor_subscriptions_total.inc()
+                    await self.client.disconnect()
+                    await self.client.connect()
+                    await self.client.subscribe_blocks(
+                        lambda block_num: self._on_block(block_num, processor)
+                    )
+                    metrics.monitor_subscription_ended_total.inc()
+                    await self.emit(
+                        "close", {"code": 1000, "reason": "subscription ended"}
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    metrics.monitor_errors_total.inc()
+                    log.error("Monitor error", error=str(e))
+                    await self.emit("error", e)
+                    await self.emit("close", {"code": -1, "reason": str(e)})
+                finally:
+                    await self.client.disconnect()
 
-            wallet_filter = WalletFilter(target_wallets)
-            processor = BlockProcessor(self.client, self.decoder, wallet_filter)
-
-            if wallet_filter.is_tracking_all:
-                log.info("Tracking ALL Polymarket trades")
-            else:
-                log.info("Tracking specific wallets", count=wallet_count)
-
-            try:
-                await self.client.subscribe_blocks(
-                    lambda block_num: self._on_block(block_num, processor)
-                )
-            except Exception as e:
-                metrics.monitor_errors_total.inc()
-                log.error("Monitor error", error=str(e))
-                self.emit("error", e)
-                self.emit("close", {"code": -1, "reason": str(e)})
-        except Exception as e:
-            metrics.monitor_errors_total.inc()
-            log.error("Monitor error", error=str(e))
-            self.emit("error", e)
-            self.emit("close", {"code": -1, "reason": str(e)})
+                if self._running:
+                    metrics.monitor_reconnects_total.inc()
+                    await asyncio.sleep(self.client.RECONNECT_DELAY_SECONDS)
         finally:
             self._running = False
             metrics.monitor_running.set(0)
@@ -81,11 +96,11 @@ class TradeMonitor:
         try:
             trades = await processor.process_block(block_number)
             for trade in trades:
-                self.emit("transaction", trade)
+                await self.emit("transaction", trade)
         except Exception as e:
             metrics.block_errors_total.inc()
             log.error("Block processing error", block=block_number, error=str(e))
-            self.emit("error", e)
+            await self.emit("error", e)
 
     async def stop(self) -> None:
         """Stop monitoring."""
