@@ -1,4 +1,5 @@
 """Block processing for trade extraction."""
+import asyncio
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Optional
@@ -23,6 +24,11 @@ POLYMARKET_CONTRACTS = {
 # Lowercase all contract addresses once so membership checks with tx_to.lower() are reliable
 POLYMARKET_CONTRACTS = {addr.lower() for addr in POLYMARKET_CONTRACTS}
 
+# Precompute selector strings once (used for Polymarket tx debug logging)
+CTF_SELECTOR_HEX = "0x" + CTF_MATCH_ORDERS_SELECTOR.hex()
+NEGRISK_SELECTOR_HEX = "0x" + NEGRISK_MATCH_ORDERS_SELECTOR.hex()
+
+
 class BlockProcessor:
     """Processes blocks and extracts matching trades."""
 
@@ -36,44 +42,96 @@ class BlockProcessor:
         self.decoder = decoder
         self.filter = wallet_filter
 
+    async def _get_block(
+        self, block_number: int, *, retries: int = 3, delay_seconds: float = 0.25
+    ) -> Optional[dict]:
+        block: Optional[dict] = None
+        for attempt in range(retries):
+            block = await self.client.get_block_with_transactions(block_number)
+            if block:
+                return block
+
+            metrics.block_fetch_retries_total.inc()
+            if attempt < retries - 1:
+                await asyncio.sleep(delay_seconds)
+        return None
+
+    def _block_timestamp_iso(self, block: dict, block_number: int) -> Optional[str]:
+        # hex Unix epoch → ISO 8601
+        block_ts_hex = block.get("timestamp")
+        if not block_ts_hex:
+            metrics.block_skipped_total.labels(reason="missing_timestamp").inc()
+            log.warning("Block missing timestamp", block=block_number)
+            return None
+        try:
+            block_ts = int(block_ts_hex, 16)
+        except (TypeError, ValueError):
+            metrics.block_skipped_total.labels(reason="invalid_timestamp").inc()
+            log.warning(
+                "Block timestamp not hex", block=block_number, timestamp=block_ts_hex
+            )
+            return None
+        return datetime.fromtimestamp(block_ts, tz=timezone.utc).isoformat()
+
+    def _build_receipt_map(self, receipts: list[dict]) -> dict[str, dict]:
+        # Build receipt lookup by tx hash, skipping null/malformed receipts
+        receipt_map: dict[str, dict] = {}
+        for r in receipts:
+            if not isinstance(r, dict):
+                continue
+            tx_hash = r.get("transactionHash")
+            if isinstance(tx_hash, str) and tx_hash:
+                receipt_map[tx_hash] = r
+        return receipt_map
+
+    def _log_polymarket_contract_tx(self, tx_to: str, tx_input: str) -> None:
+        if tx_to not in POLYMARKET_CONTRACTS:
+            return
+
+        selector = tx_input[:10] if len(tx_input) >= 10 else "none"
+        log.info(
+            "Found Polymarket contract tx",
+            to=tx_to[:10],
+            selector=selector,
+            matches_ctf=(selector == CTF_SELECTOR_HEX),
+            matches_negrisk=(selector == NEGRISK_SELECTOR_HEX),
+        )
+
     async def process_block(self, block_number: int) -> list[TradeData]:
         """Process all transactions in a block."""
         started_at = perf_counter()
-        trades = []
         try:
-            block = await self.client.get_block_with_transactions(block_number)
+            block = await self._get_block(block_number)
+            if not block:
+                metrics.block_skipped_total.labels(reason="not_available").inc()
+                log.warning("Block not available yet", block=block_number)
+                return []
+
+            timestamp = self._block_timestamp_iso(block, block_number)
+            if not timestamp:
+                return []
+
             receipts = await self.client.get_block_receipts(block_number)
+            receipt_map = self._build_receipt_map(receipts)
 
-            # Extract block timestamp (hex Unix epoch → ISO 8601)
-            block_ts = int(block["timestamp"], 16)
-            timestamp = datetime.fromtimestamp(block_ts, tz=timezone.utc).isoformat()
+            transactions = block.get("transactions") or []
+            log.info("Processing block", block=block_number, txs=len(transactions))
+            metrics.transactions_scanned_total.inc(len(transactions))
 
-            # Build receipt lookup by tx hash
-            receipt_map = {r["transactionHash"]: r for r in receipts}
+            trades: list[TradeData] = []
+            for tx in transactions:
+                if not isinstance(tx, dict):
+                    continue
 
-            log.info("Processing block", block=block_number, txs=len(block["transactions"]))
-            metrics.transactions_scanned_total.inc(len(block["transactions"]))
-
-            # Debug: check for Polymarket transactions
-            ctf_selector = "0x" + CTF_MATCH_ORDERS_SELECTOR.hex()
-            negrisk_selector = "0x" + NEGRISK_MATCH_ORDERS_SELECTOR.hex()
-
-            for tx in block["transactions"]:
                 tx_input = tx.get("input", "")
                 tx_to = (tx.get("to") or "").lower()
+                self._log_polymarket_contract_tx(tx_to, tx_input)
 
-                # Check if this is a Polymarket contract
-                if tx_to in POLYMARKET_CONTRACTS:
-                    selector = tx_input[:10] if len(tx_input) >= 10 else "none"
-                    log.info(
-                        "Found Polymarket contract tx",
-                        to=tx_to[:10],
-                        selector=selector,
-                        matches_ctf=(selector == ctf_selector),
-                        matches_negrisk=(selector == negrisk_selector),
-                    )
+                tx_hash = tx.get("hash")
+                if not tx_hash:
+                    continue
 
-                receipt = receipt_map.get(tx["hash"])
+                receipt = receipt_map.get(tx_hash)
                 trade = self._process_transaction(tx, block_number, timestamp, receipt)
                 if trade:
                     trades.append(trade)
@@ -89,7 +147,8 @@ class BlockProcessor:
         self, tx: dict, block_number: int, timestamp: str, receipt: Optional[dict]
     ) -> Optional[TradeData]:
         """Process single transaction and return TradeData if matching."""
-        result = self.decoder.decode(tx["input"])
+        tx_input = tx.get("input") or ""
+        result = self.decoder.decode(tx_input)
         if not result:
             return None
 
@@ -97,10 +156,14 @@ class BlockProcessor:
         if not matching_order:
             return None
 
+        tx_hash = tx.get("hash")
+        if not tx_hash:
+            return None
+
         return TradeData(
             block_number=block_number,
             timestamp=timestamp,
-            transaction_hash=tx["hash"],
+            transaction_hash=tx_hash,
             wallet=matching_order.maker,
             token_id=matching_order.token_id,
             condition_id=result.condition_id,
