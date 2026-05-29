@@ -50,6 +50,8 @@ class BlockProcessor:
             block = await self.client.get_block_with_transactions(block_number)
             if block:
                 return block
+
+            metrics.block_fetch_retries_total.inc()
             if attempt < retries - 1:
                 await asyncio.sleep(delay_seconds)
         return None
@@ -58,11 +60,13 @@ class BlockProcessor:
         # hex Unix epoch → ISO 8601
         block_ts_hex = block.get("timestamp")
         if not block_ts_hex:
+            metrics.block_skipped_total.labels(reason="missing_timestamp").inc()
             log.warning("Block missing timestamp", block=block_number)
             return None
         try:
             block_ts = int(block_ts_hex, 16)
         except (TypeError, ValueError):
+            metrics.block_skipped_total.labels(reason="invalid_timestamp").inc()
             log.warning(
                 "Block timestamp not hex", block=block_number, timestamp=block_ts_hex
             )
@@ -99,6 +103,7 @@ class BlockProcessor:
         try:
             block = await self._get_block(block_number)
             if not block:
+                metrics.block_skipped_total.labels(reason="not_available").inc()
                 log.warning("Block not available yet", block=block_number)
                 return []
 

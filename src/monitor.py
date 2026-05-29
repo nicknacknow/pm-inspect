@@ -40,6 +40,7 @@ class TradeMonitor:
                 else:
                     callback(data)
             except Exception as exc:
+                metrics.event_handler_errors_total.labels(event=event).inc()
                 log.error("Event handler error", event=event, error=str(exc))
                 if event != "error":
                     await self.emit("error", exc)
@@ -62,11 +63,13 @@ class TradeMonitor:
         try:
             while self._running:
                 try:
+                    metrics.monitor_subscriptions_total.inc()
                     await self.client.disconnect()
                     await self.client.connect()
                     await self.client.subscribe_blocks(
                         lambda block_num: self._on_block(block_num, processor)
                     )
+                    metrics.monitor_subscription_ended_total.inc()
                     await self.emit(
                         "close", {"code": 1000, "reason": "subscription ended"}
                     )
@@ -81,6 +84,7 @@ class TradeMonitor:
                     await self.client.disconnect()
 
                 if self._running:
+                    metrics.monitor_reconnects_total.inc()
                     await asyncio.sleep(self.client.RECONNECT_DELAY_SECONDS)
         finally:
             self._running = False

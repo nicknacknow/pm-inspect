@@ -2,7 +2,7 @@
 
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from src.core.block_processor import BlockProcessor
 from src.core.models import DecodedOrder, DecodedTransaction, TradeData
@@ -83,6 +83,65 @@ class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
         wallet_filter.filter.assert_called_once_with(
             [matching_order], {"transactionHash": "0xaaa", "status": "0x1"}
         )
+
+    async def test_process_block_retries_when_block_temporarily_unavailable(self) -> None:
+        block_number = 456
+        block_ts = 1_700_000_000
+
+        client = AsyncMock()
+        client.get_block_with_transactions.side_effect = [
+            None,
+            {
+                "timestamp": hex(block_ts),
+                "transactions": [
+                    {
+                        "hash": "0xaaa",
+                        "input": "0xdeadbeef",
+                        "to": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    }
+                ],
+            },
+        ]
+        client.get_block_receipts.return_value = [
+            {"transactionHash": "0xaaa", "status": "0x1"}
+        ]
+
+        decoder = Mock()
+        matching_order = make_order()
+        condition_id = "0x" + "11" * 32
+        decoder.decode.return_value = DecodedTransaction(
+            condition_id=condition_id,
+            orders=[matching_order],
+        )
+
+        wallet_filter = Mock()
+        wallet_filter.filter.return_value = matching_order
+
+        processor = BlockProcessor(client, decoder, wallet_filter)
+
+        with patch("src.core.block_processor.asyncio.sleep", new=AsyncMock()) as sleep_mock:
+            trades = await processor.process_block(block_number)
+
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(client.get_block_with_transactions.await_count, 2)
+        sleep_mock.assert_awaited_once()
+
+    async def test_process_block_skips_block_with_invalid_timestamp(self) -> None:
+        block_number = 789
+
+        client = AsyncMock()
+        client.get_block_with_transactions.return_value = {
+            "timestamp": "not-hex",
+            "transactions": [],
+        }
+        client.get_block_receipts = AsyncMock()
+
+        processor = BlockProcessor(client, Mock(), Mock())
+
+        trades = await processor.process_block(block_number)
+
+        self.assertEqual(trades, [])
+        client.get_block_receipts.assert_not_awaited()
 
 
 if __name__ == "__main__":

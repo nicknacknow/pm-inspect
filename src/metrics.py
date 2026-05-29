@@ -63,9 +63,41 @@ class ServiceMetrics:
             "Total monitor loop errors.",
             registry=self.registry,
         )
+        self.monitor_reconnects_total = Counter(
+            "pminspect_monitor_reconnects_total",
+            "Total monitor reconnect cycles (after a disconnect/error).",
+            registry=self.registry,
+        )
+        self.monitor_subscriptions_total = Counter(
+            "pminspect_monitor_subscriptions_total",
+            "Total websocket subscription attempts.",
+            registry=self.registry,
+        )
+        self.monitor_subscription_ended_total = Counter(
+            "pminspect_monitor_subscription_ended_total",
+            "Total times the websocket subscription ended without raising an error.",
+            registry=self.registry,
+        )
+        self.event_handler_errors_total = Counter(
+            "pminspect_event_handler_errors_total",
+            "Total exceptions raised by user-registered event handlers.",
+            ["event"],
+            registry=self.registry,
+        )
         self.block_errors_total = Counter(
             "pminspect_block_errors_total",
             "Total block processing errors.",
+            registry=self.registry,
+        )
+        self.block_fetch_retries_total = Counter(
+            "pminspect_block_fetch_retries_total",
+            "Total retries while fetching blocks that were temporarily unavailable.",
+            registry=self.registry,
+        )
+        self.block_skipped_total = Counter(
+            "pminspect_block_skipped_total",
+            "Total blocks skipped for known non-fatal reasons.",
+            ["reason"],
             registry=self.registry,
         )
         self.trade_event_validation_failures_total = Counter(
