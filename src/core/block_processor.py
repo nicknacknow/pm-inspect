@@ -65,7 +65,7 @@ class BlockProcessor:
                 # Check if this is a Polymarket contract
                 if tx_to in POLYMARKET_CONTRACTS:
                     selector = tx_input[:10] if len(tx_input) >= 10 else "none"
-                    log.info(
+                    log.debug(
                         "Found Polymarket contract tx",
                         to=tx_to[:10],
                         selector=selector,
