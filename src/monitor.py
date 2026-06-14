@@ -3,6 +3,8 @@
 import asyncio
 from typing import Any, Callable, Optional
 
+import websockets.exceptions
+
 from src.api.polygon import PolygonClient
 from src.core.block_processor import BlockProcessor
 from src.core.decoder import TransactionDecoder
@@ -75,8 +77,14 @@ class TradeMonitor:
                     )
                 except asyncio.CancelledError:
                     raise
+                except websockets.exceptions.ConnectionClosed as e:
+                    metrics.monitor_errors_total.labels(
+                        error_type="connection_closed"
+                    ).inc()
+                    log.warning("WebSocket connection closed, reconnecting")
+                    await self.emit("close", {"code": -1, "reason": str(e)})
                 except Exception as e:
-                    metrics.monitor_errors_total.inc()
+                    metrics.monitor_errors_total.labels(error_type="other").inc()
                     log.error("Monitor error", error=str(e))
                     await self.emit("error", e)
                     await self.emit("close", {"code": -1, "reason": str(e)})
@@ -98,7 +106,7 @@ class TradeMonitor:
             for trade in trades:
                 await self.emit("transaction", trade)
         except Exception as e:
-            metrics.block_errors_total.inc()
+            metrics.block_errors_total.labels(error_type="processing").inc()
             log.error("Block processing error", block=block_number, error=str(e))
             await self.emit("error", e)
 

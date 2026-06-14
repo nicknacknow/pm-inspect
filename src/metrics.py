@@ -61,6 +61,7 @@ class ServiceMetrics:
         self.monitor_errors_total = Counter(
             "pminspect_monitor_errors_total",
             "Total monitor loop errors.",
+            ["error_type"],
             registry=self.registry,
         )
         self.monitor_reconnects_total = Counter(
@@ -87,6 +88,7 @@ class ServiceMetrics:
         self.block_errors_total = Counter(
             "pminspect_block_errors_total",
             "Total block processing errors.",
+            ["error_type"],
             registry=self.registry,
         )
         self.block_fetch_retries_total = Counter(
