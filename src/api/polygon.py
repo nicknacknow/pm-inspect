@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Optional
 import aiohttp
 import websockets
 
-from src.constants import POLYGON_WSS_URL
+from src.constants import POLYGON_WSS_URL, POLYGON_WSS_URL_SECONDARY
 from src.metrics import metrics
 from src.utils.logging import get_logger
 
@@ -21,11 +21,38 @@ class PolygonClient:
     RPC_RETRY_DELAY_SECONDS = 1
 
     def __init__(self, wss_url: str | None = None) -> None:
-        self.wss_url = wss_url or POLYGON_WSS_URL or ""
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
+        primary = wss_url or POLYGON_WSS_URL or ""
+        secondary = POLYGON_WSS_URL_SECONDARY
+        self._endpoints: list[str] = (
+            [primary] if not secondary else [primary, secondary]
+        )
+        self._endpoint_index = 0
+        self.wss_url = self._current_url() or ""
+        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/") if self.wss_url else ""
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
+
+    def _current_url(self) -> str:
+        return self._endpoints[self._endpoint_index % len(self._endpoints)]
+
+    def _advance_endpoint(self) -> bool:
+        if len(self._endpoints) <= 1:
+            return False
+        self._endpoint_index = (self._endpoint_index + 1) % len(self._endpoints)
+        previous = self.wss_url
+        self.wss_url = self._current_url()
+        self.http_url = (
+            self.wss_url.replace("wss://", "https://").rstrip("/")
+            if self.wss_url
+            else ""
+        )
+        log.info(
+            "Switched Polygon RPC endpoint",
+            previous=previous,
+            current=self.wss_url,
+        )
+        return True
 
     def _next_id(self) -> int:
         """Generate next JSON-RPC request ID."""
