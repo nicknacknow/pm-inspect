@@ -26,10 +26,18 @@ class PolygonClient:
         self._endpoints: list[str] = list(POLYGON_WSS_URLS)
         self._endpoint_index = 0
         self.wss_url = self._current_url()
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
+        self.http_url = self._derive_http_url(self.wss_url)
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
+
+    @staticmethod
+    def _derive_http_url(wss_url: str) -> str:
+        if wss_url.startswith("wss://"):
+            return wss_url.replace("wss://", "https://", 1).rstrip("/")
+        if wss_url.startswith("ws://"):
+            return wss_url.replace("ws://", "http://", 1).rstrip("/")
+        return wss_url.rstrip("/")
 
     def _current_url(self) -> str:
         return self._endpoints[self._endpoint_index % len(self._endpoints)]
@@ -109,7 +117,6 @@ class PolygonClient:
 
         session = await self._get_http_session()
 
-        rpc_retries = 0
         while True:
             try:
                 async with session.post(
@@ -129,7 +136,6 @@ class PolygonClient:
                             ),
                         )
                         await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
-                        rpc_retries += 1
                         continue
 
                     return result["result"]
@@ -142,9 +148,8 @@ class PolygonClient:
                     error=str(e),
                 )
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
-                if rpc_retries == 0 and len(self._endpoints) > 1:
+                if len(self._endpoints) > 1:
                     self._advance_endpoint()
-                rpc_retries += 1
                 continue
 
     async def subscribe_blocks(
