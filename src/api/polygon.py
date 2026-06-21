@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Optional
 import aiohttp
 import websockets
 
-from src.constants import POLYGON_WSS_URL
+from src.constants import POLYGON_WSS_URLS
 from src.metrics import metrics
 from src.utils.logging import get_logger
 
@@ -20,12 +20,45 @@ class PolygonClient:
     RECONNECT_DELAY_SECONDS = 5
     RPC_RETRY_DELAY_SECONDS = 1
 
-    def __init__(self, wss_url: str | None = None) -> None:
-        self.wss_url = wss_url or POLYGON_WSS_URL or ""
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
+    def __init__(self) -> None:
+        if not POLYGON_WSS_URLS:
+            raise ValueError("POLYGON_WSS_URLS is not configured")
+        self._endpoints: list[str] = list(POLYGON_WSS_URLS)
+        self._endpoint_index = 0
+        self.wss_url = self._current_url()
+        self.http_url = self._derive_http_url(self.wss_url)
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
+
+    @staticmethod
+    def _derive_http_url(wss_url: str) -> str:
+        if wss_url.startswith("wss://"):
+            return wss_url.replace("wss://", "https://", 1).rstrip("/")
+        if wss_url.startswith("ws://"):
+            return wss_url.replace("ws://", "http://", 1).rstrip("/")
+        return wss_url.rstrip("/")
+
+    def _current_url(self) -> str:
+        return self._endpoints[self._endpoint_index % len(self._endpoints)]
+
+    def _advance_endpoint(self) -> bool:
+        if len(self._endpoints) <= 1:
+            return False
+        self._endpoint_index = (self._endpoint_index + 1) % len(self._endpoints)
+        previous = self.wss_url
+        self.wss_url = self._current_url()
+        self.http_url = (
+            self.wss_url.replace("wss://", "https://").rstrip("/")
+            if self.wss_url
+            else ""
+        )
+        log.info(
+            "Switched Polygon RPC endpoint",
+            previous=previous,
+            current=self.wss_url,
+        )
+        return True
 
     def _next_id(self) -> int:
         """Generate next JSON-RPC request ID."""
@@ -35,7 +68,7 @@ class PolygonClient:
     async def connect(self) -> None:
         """Establish WebSocket connection."""
         if not self.wss_url:
-            raise ValueError("POLYGON_WSS_URL is not configured")
+            raise ValueError("POLYGON_WSS_URLS is not configured")
 
         log.info("Connecting to WebSocket", url=self.wss_url[:50] + "...")
         try:
@@ -109,32 +142,58 @@ class PolygonClient:
 
             except (aiohttp.ClientError, json.JSONDecodeError) as e:
                 metrics.rpc_failures_total.labels(method=method).inc()
-                log.warning("RPC request failed, retrying", method=method, error=str(e))
+                log.warning(
+                    "RPC request failed, retrying",
+                    method=method,
+                    error=str(e),
+                )
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                if len(self._endpoints) > 1:
+                    self._advance_endpoint()
+                continue
 
     async def subscribe_blocks(
         self, callback: Callable[[int], Awaitable[None]]
     ) -> None:
-        """Subscribe to new block headers via WebSocket."""
-        if not self._ws:
-            await self.connect()
-
-        # Subscribe to newHeads
+        """Subscribe to new block headers via WebSocket with automatic failover."""
         subscribe_msg = {
             "jsonrpc": "2.0",
             "id": self._next_id(),
             "method": "eth_subscribe",
             "params": ["newHeads"],
         }
-        await self._ws.send(json.dumps(subscribe_msg))
-        await self._ws.recv()  # subscription confirmation
 
-        # Listen for new blocks
-        async for message in self._ws:
-            data = json.loads(message)
-            if "params" in data:
-                block_number = int(data["params"]["result"]["number"], 16)
-                await callback(block_number)
+        while True:
+            try:
+                if not self._ws:
+                    await self.connect()
+
+                await self._ws.send(json.dumps(subscribe_msg))
+                await self._ws.recv()  # subscription confirmation
+
+                # Listen for new blocks
+                async for message in self._ws:
+                    data = json.loads(message)
+                    if "params" in data:
+                        block_number = int(data["params"]["result"]["number"], 16)
+                        await callback(block_number)
+            except (
+                websockets.exceptions.ConnectionClosed,
+                ConnectionError,
+                OSError,
+            ) as e:
+                log.warning(
+                    "WebSocket error, switching endpoint",
+                    error=str(e),
+                )
+                await self.disconnect()
+                if not self._advance_endpoint():
+                    raise
+                continue
+            except Exception as e:
+                log.error("Unexpected WebSocket error", error=str(e))
+                await self.disconnect()
+                raise
 
     async def get_block_with_transactions(self, block_number: int) -> dict:
         """Fetch full block with all transactions."""
