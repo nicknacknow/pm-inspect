@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, Optional
 import aiohttp
 import websockets
 
-from src.constants import POLYGON_WSS_URL, POLYGON_WSS_URL_SECONDARY
+from src.constants import POLYGON_WSS_URLS
 from src.metrics import metrics
 from src.utils.logging import get_logger
 
@@ -20,15 +20,13 @@ class PolygonClient:
     RECONNECT_DELAY_SECONDS = 5
     RPC_RETRY_DELAY_SECONDS = 1
 
-    def __init__(self, wss_url: str | None = None) -> None:
-        primary = wss_url or POLYGON_WSS_URL or ""
-        secondary = POLYGON_WSS_URL_SECONDARY
-        self._endpoints: list[str] = (
-            [primary] if not secondary else [primary, secondary]
-        )
+    def __init__(self) -> None:
+        if not POLYGON_WSS_URLS:
+            raise ValueError("POLYGON_WSS_URLS is not configured")
+        self._endpoints: list[str] = list(POLYGON_WSS_URLS)
         self._endpoint_index = 0
-        self.wss_url = self._current_url() or ""
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/") if self.wss_url else ""
+        self.wss_url = self._current_url()
+        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
@@ -62,7 +60,7 @@ class PolygonClient:
     async def connect(self) -> None:
         """Establish WebSocket connection."""
         if not self.wss_url:
-            raise ValueError("POLYGON_WSS_URL is not configured")
+            raise ValueError("POLYGON_WSS_URLS is not configured")
 
         log.info("Connecting to WebSocket", url=self.wss_url[:50] + "...")
         try:
@@ -111,6 +109,7 @@ class PolygonClient:
 
         session = await self._get_http_session()
 
+        rpc_retries = 0
         while True:
             try:
                 async with session.post(
@@ -130,38 +129,66 @@ class PolygonClient:
                             ),
                         )
                         await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                        rpc_retries += 1
                         continue
 
                     return result["result"]
 
             except (aiohttp.ClientError, json.JSONDecodeError) as e:
                 metrics.rpc_failures_total.labels(method=method).inc()
-                log.warning("RPC request failed, retrying", method=method, error=str(e))
+                log.warning(
+                    "RPC request failed, retrying",
+                    method=method,
+                    error=str(e),
+                )
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                if rpc_retries == 0 and len(self._endpoints) > 1:
+                    self._advance_endpoint()
+                rpc_retries += 1
+                continue
 
     async def subscribe_blocks(
         self, callback: Callable[[int], Awaitable[None]]
     ) -> None:
-        """Subscribe to new block headers via WebSocket."""
-        if not self._ws:
-            await self.connect()
-
-        # Subscribe to newHeads
+        """Subscribe to new block headers via WebSocket with automatic failover."""
         subscribe_msg = {
             "jsonrpc": "2.0",
             "id": self._next_id(),
             "method": "eth_subscribe",
             "params": ["newHeads"],
         }
-        await self._ws.send(json.dumps(subscribe_msg))
-        await self._ws.recv()  # subscription confirmation
 
-        # Listen for new blocks
-        async for message in self._ws:
-            data = json.loads(message)
-            if "params" in data:
-                block_number = int(data["params"]["result"]["number"], 16)
-                await callback(block_number)
+        while True:
+            try:
+                if not self._ws:
+                    await self.connect()
+
+                await self._ws.send(json.dumps(subscribe_msg))
+                await self._ws.recv()  # subscription confirmation
+
+                # Listen for new blocks
+                async for message in self._ws:
+                    data = json.loads(message)
+                    if "params" in data:
+                        block_number = int(data["params"]["result"]["number"], 16)
+                        await callback(block_number)
+            except (
+                websockets.exceptions.ConnectionClosed,
+                ConnectionError,
+                OSError,
+            ) as e:
+                log.warning(
+                    "WebSocket error, switching endpoint",
+                    error=str(e),
+                )
+                await self.disconnect()
+                if not self._advance_endpoint():
+                    raise
+                continue
+            except Exception as e:
+                log.error("Unexpected WebSocket error", error=str(e))
+                await self.disconnect()
+                raise
 
     async def get_block_with_transactions(self, block_number: int) -> dict:
         """Fetch full block with all transactions."""
