@@ -115,7 +115,7 @@ class BlockProcessor:
             receipt_map = self._build_receipt_map(receipts)
 
             transactions = block.get("transactions") or []
-            log.info("Processing block", block=block_number, txs=len(transactions))
+            log.debug("Processing block", block=block_number, txs=len(transactions))
             metrics.transactions_scanned_total.inc(len(transactions))
 
             trades: list[TradeData] = []
