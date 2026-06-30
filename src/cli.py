@@ -1,6 +1,7 @@
 """CLI for pminspect publisher service."""
 
 import asyncio
+import concurrent.futures
 
 import typer
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -52,6 +53,8 @@ def listen(
 
 async def _listen(redis_url: str) -> None:
     """Async implementation of listen command."""
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=2))
     monitor = TradeMonitor()
     publisher = RedisTradePublisher(redis_url=redis_url, channel=TRADE_TOPIC)
     await publisher.connect()
