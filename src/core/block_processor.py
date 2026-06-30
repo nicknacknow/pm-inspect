@@ -101,7 +101,10 @@ class BlockProcessor:
         """Process all transactions in a block."""
         started_at = perf_counter()
         try:
-            block = await self._get_block(block_number)
+            block, receipts = await asyncio.gather(
+                self._get_block(block_number),
+                self.client.get_block_receipts(block_number),
+            )
             if not block:
                 metrics.block_skipped_total.labels(reason="not_available").inc()
                 log.warning("Block not available yet", block=block_number)
@@ -111,7 +114,6 @@ class BlockProcessor:
             if not timestamp:
                 return []
 
-            receipts = await self.client.get_block_receipts(block_number)
             receipt_map = self._build_receipt_map(receipts)
 
             transactions = block.get("transactions") or []

@@ -141,7 +141,7 @@ class BlockProcessorTests(unittest.IsolatedAsyncioTestCase):
         trades = await processor.process_block(block_number)
 
         self.assertEqual(trades, [])
-        client.get_block_receipts.assert_not_awaited()
+        client.get_block_receipts.assert_awaited_once_with(block_number)
 
 
 if __name__ == "__main__":
