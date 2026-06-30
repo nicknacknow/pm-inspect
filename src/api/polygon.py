@@ -86,28 +86,29 @@ class PolygonClient:
 
         while True:
             try:
-                async with session.post(
-                    self.http_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                ) as resp:
-                    result = await resp.json()
+                async with asyncio.timeout(30):
+                    async with session.post(
+                        self.http_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    ) as resp:
+                        result = await resp.json()
 
-                    if "error" in result:
-                        metrics.rpc_failures_total.labels(method=method).inc()
-                        log.warning(
-                            "RPC error, retrying",
-                            method=method,
-                            error=result["error"].get(
-                                "message", str(result["error"])
-                            ),
-                        )
-                        await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
-                        continue
+                if "error" in result:
+                    metrics.rpc_failures_total.labels(method=method).inc()
+                    log.warning(
+                        "RPC error, retrying",
+                        method=method,
+                        error=result["error"].get(
+                            "message", str(result["error"])
+                        ),
+                    )
+                    await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                    continue
 
-                    return result["result"]
+                return result["result"]
 
-            except (aiohttp.ClientError, json.JSONDecodeError) as e:
+            except (aiohttp.ClientError, json.JSONDecodeError, asyncio.TimeoutError) as e:
                 metrics.rpc_failures_total.labels(method=method).inc()
                 log.warning("RPC request failed, retrying", method=method, error=str(e))
                 await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
