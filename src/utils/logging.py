@@ -1,5 +1,6 @@
 """Structured logging setup."""
 import logging
+import os
 import sys
 from typing import Any
 
@@ -115,6 +116,8 @@ def get_logger(name: str) -> StructuredLogger:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(StructuredFormatter())
         logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+        logger.setLevel(
+            getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+        )
 
     return logger  # type: ignore
