@@ -1,5 +1,6 @@
 """Block processing for trade extraction."""
 import asyncio
+import random
 from datetime import datetime, timezone
 from time import perf_counter
 from typing import Optional
@@ -43,17 +44,21 @@ class BlockProcessor:
         self.filter = wallet_filter
 
     async def _get_block(
-        self, block_number: int, *, retries: int = 3, delay_seconds: float = 0.25
+        self, block_number: int, *, retries: int = 5, base_delay: float = 0.25
     ) -> Optional[dict]:
-        block: Optional[dict] = None
         for attempt in range(retries):
-            block = await self.client.get_block_with_transactions(block_number)
-            if block:
-                return block
+            try:
+                block = await self.client.get_block_with_transactions(block_number)
+                if block:
+                    return block
+            except Exception:
+                if attempt == retries - 1:
+                    raise
 
             metrics.block_fetch_retries_total.inc()
-            if attempt < retries - 1:
-                await asyncio.sleep(delay_seconds)
+            delay = min(base_delay * (2**attempt), 30.0)
+            jittered = delay * (0.5 + random.random() * 0.5)
+            await asyncio.sleep(jittered)
         return None
 
     def _block_timestamp_iso(self, block: dict, block_number: int) -> Optional[str]:
