@@ -22,17 +22,21 @@ class PolygonClient:
     RPC_RETRY_BASE_DELAY = 1.0
 
     def __init__(self) -> None:
-        if not POLYGON_WSS_URLS:
-            raise ValueError("POLYGON_WSS_URLS is not configured")
-        self._endpoints: list[str] = list(POLYGON_WSS_URLS)
+        self._endpoints: list[str] = list(POLYGON_WSS_URLS) if POLYGON_WSS_URLS else []
         self._endpoint_index = 0
-        self.wss_url = self._current_url()
-        self.http_url = self.wss_url.replace("wss://", "https://").rstrip("/")
+        self.wss_url = self._current_url() if self._endpoints else ""
+        self.http_url = (
+            self.wss_url.replace("wss://", "https://").rstrip("/")
+            if self.wss_url
+            else ""
+        )
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._http_session: Optional[aiohttp.ClientSession] = None
         self._request_id = 0
 
     def _current_url(self) -> str:
+        if not self._endpoints:
+            return ""
         return self._endpoints[self._endpoint_index % len(self._endpoints)]
 
     def _advance_endpoint(self) -> bool:
