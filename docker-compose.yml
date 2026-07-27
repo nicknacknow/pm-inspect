@@ -20,6 +20,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       METRICS_PORT: ${METRICS_PORT:-8001}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${METRICS_PORT:-8001}:${METRICS_PORT:-8001}"
     depends_on:
