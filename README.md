@@ -29,7 +29,9 @@ cp .env.example .env
 ```
 
 ```env
-POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
+POLYGON_WSS_URLS=wss://primary,wss://secondary
+# Or backwards-compatible single endpoint:
+# POLYGON_WSS_URL=wss://your-polygon-wss-endpoint
 REDIS_URL=redis://localhost:6379/0
 ```
 

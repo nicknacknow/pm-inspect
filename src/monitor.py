@@ -18,8 +18,8 @@ log = get_logger(__name__)
 class TradeMonitor:
     """Main orchestrator for monitoring wallet trades."""
 
-    def __init__(self, wss_url: Optional[str] = None) -> None:
-        self.client = PolygonClient(wss_url) if wss_url else PolygonClient()
+    def __init__(self) -> None:
+        self.client = PolygonClient()
         self.decoder = TransactionDecoder()
         self._callbacks: dict[str, list[Callable]] = {
             "transaction": [],
