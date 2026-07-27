@@ -1,6 +1,7 @@
 """Polygon blockchain client."""
 import asyncio
 import json
+import random
 import ssl
 from typing import Any, Awaitable, Callable, Optional
 
@@ -18,7 +19,7 @@ class PolygonClient:
     """Manages WebSocket connection to Polygon blockchain via JSON-RPC."""
 
     RECONNECT_DELAY_SECONDS = 5
-    RPC_RETRY_DELAY_SECONDS = 1
+    RPC_RETRY_BASE_DELAY = 1.0
 
     def __init__(self) -> None:
         if not POLYGON_WSS_URLS:
@@ -110,7 +111,9 @@ class PolygonClient:
         session = await self._get_http_session()
 
         rpc_retries = 0
+        attempt = 0
         while True:
+            attempt += 1
             try:
                 async with session.post(
                     self.http_url,
@@ -128,7 +131,9 @@ class PolygonClient:
                                 "message", str(result["error"])
                             ),
                         )
-                        await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                        delay = min(self.RPC_RETRY_BASE_DELAY * (2**attempt), 60.0)
+                        jittered = delay * (0.5 + random.random() * 0.5)
+                        await asyncio.sleep(jittered)
                         rpc_retries += 1
                         continue
 
@@ -136,14 +141,12 @@ class PolygonClient:
 
             except (aiohttp.ClientError, json.JSONDecodeError) as e:
                 metrics.rpc_failures_total.labels(method=method).inc()
-                log.warning(
-                    "RPC request failed, retrying",
-                    method=method,
-                    error=str(e),
-                )
-                await asyncio.sleep(self.RPC_RETRY_DELAY_SECONDS)
+                log.warning("RPC request failed, retrying", method=method, error=str(e))
                 if rpc_retries == 0 and len(self._endpoints) > 1:
                     self._advance_endpoint()
+                delay = min(self.RPC_RETRY_BASE_DELAY * (2**attempt), 60.0)
+                jittered = delay * (0.5 + random.random() * 0.5)
+                await asyncio.sleep(jittered)
                 rpc_retries += 1
                 continue
 
