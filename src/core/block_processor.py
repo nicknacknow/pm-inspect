@@ -48,9 +48,14 @@ class BlockProcessor:
     ) -> Optional[dict]:
         for attempt in range(retries):
             try:
-                block = await self.client.get_block_with_transactions(block_number)
+                block = await asyncio.wait_for(
+                    self.client.get_block_with_transactions(block_number),
+                    timeout=30,
+                )
                 if block:
                     return block
+            except asyncio.TimeoutError:
+                block = None
             except Exception:
                 if attempt == retries - 1:
                     raise

@@ -115,31 +115,32 @@ class PolygonClient:
         while True:
             attempt += 1
             try:
-                async with session.post(
-                    self.http_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                ) as resp:
-                    result = await resp.json()
+                async with asyncio.timeout(30):
+                    async with session.post(
+                        self.http_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"},
+                    ) as resp:
+                        result = await resp.json()
 
-                    if "error" in result:
-                        metrics.rpc_failures_total.labels(method=method).inc()
-                        log.warning(
-                            "RPC error, retrying",
-                            method=method,
-                            error=result["error"].get(
-                                "message", str(result["error"])
-                            ),
-                        )
-                        delay = min(self.RPC_RETRY_BASE_DELAY * (2**attempt), 60.0)
-                        jittered = delay * (0.5 + random.random() * 0.5)
-                        await asyncio.sleep(jittered)
-                        rpc_retries += 1
-                        continue
+                if "error" in result:
+                    metrics.rpc_failures_total.labels(method=method).inc()
+                    log.warning(
+                        "RPC error, retrying",
+                        method=method,
+                        error=result["error"].get(
+                            "message", str(result["error"])
+                        ),
+                    )
+                    delay = min(self.RPC_RETRY_BASE_DELAY * (2**attempt), 60.0)
+                    jittered = delay * (0.5 + random.random() * 0.5)
+                    await asyncio.sleep(jittered)
+                    rpc_retries += 1
+                    continue
 
-                    return result["result"]
+                return result["result"]
 
-            except (aiohttp.ClientError, json.JSONDecodeError) as e:
+            except (aiohttp.ClientError, json.JSONDecodeError, asyncio.TimeoutError) as e:
                 metrics.rpc_failures_total.labels(method=method).inc()
                 log.warning("RPC request failed, retrying", method=method, error=str(e))
                 if rpc_retries == 0 and len(self._endpoints) > 1:
