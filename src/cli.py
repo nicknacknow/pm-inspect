@@ -1,6 +1,7 @@
 """CLI for pminspect publisher service."""
 
 import asyncio
+import gc
 
 import typer
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -12,6 +13,9 @@ from src.monitor import TradeMonitor
 from src.metrics import metrics
 from src.pubsub.topics import TRADE_TOPIC
 from src.utils.logging import get_logger
+
+# Freeze GC after all module-level imports — the GC never re-scans these objects
+gc.freeze()
 
 app = typer.Typer(
     name="pminspect",

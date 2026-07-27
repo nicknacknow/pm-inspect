@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(slots=True)
 class DecodedOrder:
     """Represents a decoded order from the blockchain transaction."""
 
@@ -20,13 +20,13 @@ class DecodedOrder:
     signature: bytes
 
 
-@dataclass
+@dataclass(slots=True)
 class DecodedTransaction:
     condition_id: str
     orders: list[DecodedOrder]
 
 
-@dataclass
+@dataclass(slots=True)
 class TradeData:
     """Trade data emitted when a matching transaction is found."""
 
