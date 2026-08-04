@@ -33,6 +33,11 @@ class ServiceMetrics:
             "Latest successfully processed block number.",
             registry=self.registry,
         )
+        self.last_persisted_block = Gauge(
+            "pminspect_last_persisted_block",
+            "Last block number persisted for resume-on-restart.",
+            registry=self.registry,
+        )
         self.blocks_processed_total = Counter(
             "pminspect_blocks_processed_total",
             "Total blocks processed by pminspect.",

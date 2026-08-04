@@ -4,11 +4,13 @@ import asyncio
 import concurrent.futures
 import gc
 
+import redis.asyncio as redis
 import typer
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from src.constants import METRICS_PORT, REDIS_URL
 from src.core.models import TradeData
+from src.events.block_state import get_last_block
 from src.events.redis_pubsub import RedisTradePublisher
 from src.monitor import TradeMonitor
 from src.metrics import metrics
@@ -59,10 +61,18 @@ async def _listen(redis_url: str) -> None:
     """Async implementation of listen command."""
     loop = asyncio.get_running_loop()
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=2))
-    monitor = TradeMonitor()
     publisher = RedisTradePublisher(redis_url=redis_url, channel=TRADE_TOPIC)
     await publisher.connect()
     log.info("Publishing trade events", redis_url=redis_url, channel=TRADE_TOPIC)
+
+    state_redis = redis.from_url(redis_url, decode_responses=True)
+    await state_redis.ping()
+    monitor = TradeMonitor(block_state=state_redis)
+    resume_from = await get_last_block(state_redis)
+    if resume_from is not None:
+        log.info("Resuming from block", block=resume_from)
+    else:
+        log.info("No persisted block found, starting fresh")
 
     async def on_trade(trade: TradeData) -> None:
         await publisher.publish_trade(trade)
@@ -72,8 +82,9 @@ async def _listen(redis_url: str) -> None:
     monitor.on("close", lambda d: log.warning("Connection closed", details=d))
 
     try:
-        await monitor.start([])
+        await monitor.start([], resume_from=resume_from)
     finally:
+        await state_redis.aclose()
         await publisher.close()
 
 

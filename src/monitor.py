@@ -4,11 +4,13 @@ import asyncio
 from typing import Any, Callable, Optional
 
 import websockets.exceptions
+from redis.asyncio import Redis
 
 from src.api.polygon import PolygonClient
 from src.core.block_processor import BlockProcessor
 from src.core.decoder import TransactionDecoder
 from src.core.wallet_filter import WalletFilter
+from src.events.block_state import set_last_block
 from src.metrics import metrics
 from src.utils.logging import get_logger
 
@@ -18,9 +20,10 @@ log = get_logger(__name__)
 class TradeMonitor:
     """Main orchestrator for monitoring wallet trades."""
 
-    def __init__(self) -> None:
+    def __init__(self, block_state: Redis | None = None) -> None:
         self.client = PolygonClient()
         self.decoder = TransactionDecoder()
+        self.block_state = block_state
         self._callbacks: dict[str, list[Callable]] = {
             "transaction": [],
             "error": [],
@@ -47,7 +50,12 @@ class TradeMonitor:
                 if event != "error":
                     await self.emit("error", exc)
 
-    async def start(self, target_wallets: list[str]) -> None:
+    async def start(
+        self,
+        target_wallets: list[str],
+        *,
+        resume_from: int | None = None,
+    ) -> None:
         """Start monitoring for trades from target wallets."""
         self._running = True
         metrics.monitor_running.set(1)
@@ -63,6 +71,8 @@ class TradeMonitor:
             log.info("Tracking specific wallets", count=wallet_count)
 
         try:
+            if resume_from is not None:
+                await self._catch_up_missed_blocks(processor, resume_from)
             while self._running:
                 try:
                     metrics.monitor_subscriptions_total.inc()
@@ -105,10 +115,28 @@ class TradeMonitor:
             trades = await processor.process_block(block_number)
             for trade in trades:
                 await self.emit("transaction", trade)
+            if self.block_state is not None:
+                await set_last_block(self.block_state, block_number)
         except Exception as e:
             metrics.block_errors_total.labels(error_type="processing").inc()
             log.error("Block processing error", block=block_number, error=str(e))
             await self.emit("error", e)
+
+    async def _catch_up_missed_blocks(
+        self, processor: BlockProcessor, resume_from: int
+    ) -> None:
+        """Process blocks missed while the service was down before going live."""
+        latest = await self.client.get_latest_block_number()
+        if latest <= resume_from:
+            log.info("Already caught up", last_persisted_block=resume_from)
+            return
+        log.info(
+            "Catching up missed blocks",
+            from_block=resume_from + 1,
+            to_block=latest,
+        )
+        for block_number in range(resume_from + 1, latest + 1):
+            await self._on_block(block_number, processor)
 
     async def stop(self) -> None:
         """Stop monitoring."""

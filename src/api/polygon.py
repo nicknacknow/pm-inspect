@@ -203,6 +203,11 @@ class PolygonClient:
         hex_block = hex(block_number)
         return await self._rpc_call("eth_getBlockByNumber", [hex_block, True])
 
+    async def get_latest_block_number(self) -> int:
+        """Fetch the current latest block number."""
+        result = await self._rpc_call("eth_blockNumber")
+        return int(result, 16)
+
     async def get_transaction_receipt(self, tx_hash: str) -> Optional[dict]:
         """Fetch transaction receipt."""
         return await self._rpc_call("eth_getTransactionReceipt", [tx_hash])
