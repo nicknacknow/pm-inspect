@@ -3,6 +3,9 @@
 `pminspect` is a focused publisher service: it listens to Polygon blocks for Polymarket trades and publishes each trade
 as a Redis Pub/Sub event.
 
+See [docs/architecture.md](docs/architecture.md) for how `pminspect` fits into the wider pm stack
+(Redis → `pm-trades-db` → PostgreSQL → polylisten, with `pm-observability` scraping everything).
+
 ## What this repo contains
 
 - Publisher CLI (`pminspect listen`)
