@@ -137,6 +137,13 @@ class TradeMonitor:
         )
         for block_number in range(resume_from + 1, latest + 1):
             await self._on_block(block_number, processor)
+            if (block_number - resume_from) % 100 == 0:
+                log.info(
+                    "Catch-up progress",
+                    processed=block_number - resume_from,
+                    total=latest - resume_from,
+                )
+            await asyncio.sleep(0)
 
     async def stop(self) -> None:
         """Stop monitoring."""
